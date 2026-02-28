@@ -550,10 +550,10 @@ export const stockService = {
       throw new AppError("Transfer not found", { status: 404, code: ERROR_CODES.NOT_FOUND });
     }
 
-    const delivery = await prisma.delivery.findUnique({
+    const delivery = (await prisma.delivery.findUnique({
       where: { transferId: id },
       select: { id: true, number: true },
-    });
+    })) as any;
 
     const base = mapTransfer(t as StockTransferWithLines) as any;
 
@@ -790,19 +790,22 @@ export const stockService = {
         where: { warehouseId: fromWarehouseId, productId: { in: productIds } },
         select: { productId: true, quantity: true },
       });
-      const sourceMap = new Map(sourceItems.map((s) => [s.productId, s.quantity]));
+      const sourceMap = new Map(sourceItems.map((s) => [s.productId, Number(s.quantity)]));
 
       for (const l of transfer.lines ?? []) {
-        const available = sourceMap.get(l.productId) ?? 0;
-        if (available - l.qty < 0) {
-          throw insufficientStockError({ available, requested: l.qty });
+        const qty = Number((l as any).qty);
+        const available = Number(sourceMap.get(l.productId) ?? 0);
+        if (available - qty < 0) {
+          throw insufficientStockError({ available, requested: qty });
         }
       }
 
       // Apply source decrements
       for (const l of transfer.lines ?? []) {
-        const current = sourceMap.get(l.productId) ?? 0;
-        const next = current - l.qty;
+        const qty = Number((l as any).qty);
+        const current = Number(sourceMap.get(l.productId) ?? 0);
+        const next = current - qty;
+        sourceMap.set(l.productId, next);
         await tx.stockItem.upsert({
           where: { warehouseId_productId: { warehouseId: fromWarehouseId, productId: l.productId } },
           update: { quantity: next },
@@ -816,7 +819,7 @@ export const stockService = {
           kind: "OUT",
           warehouseId: transfer.fromWarehouseId,
           productId: l.productId,
-          qtyDelta: -l.qty,
+          qtyDelta: -Number(l.qty),
           transferId: transfer.id,
           refType: null,
           refId: null,
@@ -834,11 +837,12 @@ export const stockService = {
           where: { warehouseId: transitWarehouseId, productId: { in: productIds } },
           select: { productId: true, quantity: true },
         });
-        const transitMap = new Map(transitRows.map((r) => [r.productId, r.quantity]));
+        const transitMap = new Map(transitRows.map((r) => [r.productId, Number(r.quantity)]));
 
         for (const l of transfer.lines ?? []) {
-          const current = transitMap.get(l.productId) ?? 0;
-          const next = current + l.qty;
+          const qty = Number((l as any).qty);
+          const current = Number(transitMap.get(l.productId) ?? 0);
+          const next = current + qty;
           transitMap.set(l.productId, next);
           await tx.stockItem.upsert({
             where: { warehouseId_productId: { warehouseId: transitWarehouseId, productId: l.productId } },
@@ -853,7 +857,7 @@ export const stockService = {
             kind: "IN",
             warehouseId: transitWarehouseId,
             productId: l.productId,
-            qtyDelta: l.qty,
+            qtyDelta: Number(l.qty),
             transferId: transfer.id,
             refType: null,
             refId: null,
@@ -1090,7 +1094,7 @@ export const stockService = {
         const already = Number(base.qtyReceived ?? 0) || 0;
         await (tx as any).stockTransferLine.update({
           where: { id: base.id },
-          data: { qtyReceived: already + qtyReceived },
+          data: { qtyReceived: Number(already) + Number(qtyReceived) },
         });
       }
 
@@ -1192,14 +1196,16 @@ export const stockService = {
     });
 
     const ids = transfers.map((t) => t.id);
-    const deliveries = ids.length
-      ? await prisma.delivery.findMany({
+    const deliveries: any[] = ids.length
+      ? ((await prisma.delivery.findMany({
           where: { transferId: { in: ids } },
           select: { id: true, number: true, transferId: true },
-        })
+        })) as any[])
       : [];
 
-    const deliveryByTransferId = new Map(deliveries.map((d) => [d.transferId, d]));
+    const deliveryByTransferId = new Map<string, any>(
+      deliveries.map((d) => [String((d as any).transferId), d])
+    );
 
     return {
       items: transfers.map((t) => {
