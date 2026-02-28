@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Base */
+  --background: #f3f2ee;
+  --foreground: #0f172a;
+
+  --muted: #64748b;
+  --card: #fbfaf7;
+  --border: #e7e5e0;
+
+  --primary: #f97316;
+  --primary-foreground: #ffffff;
+
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+
+  --warning: #f59e0b;
+  --warning-foreground: #0f172a;
+  --danger: #ef4444;
+  --danger-foreground: #ffffff;
+
+  --ring: rgba(249, 115, 22, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+.dark {
+  /*
+   * Palette "warm charcoal" — sombre sans bleu
+   *
+   * Logique :
+   *   background  →  le plus sombre (fond page)
+   *   card        →  +1 cran de clarté (surfaces)
+   *   border      →  +2 crans, légèrement olive
+   *   muted       →  texte secondaire CHAUD (taupe, pas slate bleu)
+   *   foreground  →  texte principal légèrement ivoire (pas blanc froid)
+   */
+
+  /* Fonds */
+  --background: #13100a;   /* charcoal chaud profond */
+  --card:       #1c1812;   /* surface légèrement plus claire */
+  --border:     #2e2619;   /* olive-brun doux */
+
+  /* Texte */
+  --foreground: #ede8df;   /* ivoire chaud — plus doux que #e5e7eb froid */
+  --muted:      #a09080;   /* taupe chaud — remplace le slate bleu #94a3b8 */
+
+  /* Brand */
+  --primary:            #fb923c;   /* orange légèrement plus vif en dark */
+  --primary-foreground: #13100a;
+
+  --success:            #4ade80;
+  --success-foreground: #13100a;
+
+  --warning:            #fbbf24;
+  --warning-foreground: #13100a;
+
+  --danger:             #f87171;
+  --danger-foreground:  #13100a;
+
+  --ring: rgba(251, 146, 60, 0.45);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:where(input, select, textarea, button):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}

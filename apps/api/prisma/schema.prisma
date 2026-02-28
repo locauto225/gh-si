@@ -1,0 +1,1323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Client {
+  id         String @id @default(cuid())
+  name       String
+  nameSearch String @default("")
+
+  // Contacts
+  contactName String?
+  phone       String?
+  email       String?
+
+  // Infos société
+  address          String?
+  note             String?
+  taxId            String?
+  paymentTermsDays Int?
+  creditLimit      Int?
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ventes (V1)
+  sales    Sale[]
+  orders   Order[]
+  invoices Invoice[]
+  payments Payment[]
+
+  // Tournées / arrêts (logistique)
+  deliveryStops DeliveryStop[]
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([name])
+  @@index([nameSearch])
+  @@index([taxId])
+}
+
+model Driver {
+  id   String @id @default(cuid())
+  name String
+
+  phone String?
+  email String?
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  deliveries Delivery[]
+
+  // Tournées (logistique)
+  trips DeliveryTrip[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([name])
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+  stockInventories StockInventory[]
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([slug])
+}
+
+model Product {
+  id        String    @id @default(cuid())
+  sku       String    @unique
+  name      String
+  nameSearch String   @default("")
+  unit      String    @default("piece")
+  price     Int       @default(0) // FCFA (XOF) - entier
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  // ✅ Boissons (optionnels)
+  brand    String?
+  // Note SQLite: une contrainte UNIQUE autorise plusieurs NULL.
+  // Donc plusieurs produits peuvent ne pas avoir de code-barres, mais dès qu'il est renseigné il doit être unique.
+  barcode  String? @unique
+  packSize Int? // ex: 24 (bouteilles/caisse)
+
+  // ✅ FNE / Facturation (snapshots & taxes)
+  description String?
+  // Code taxe (ex: B/C/D/E selon nomenclature FNE)
+  taxCode     String?
+  // Taux en basis points (ex: 900 = 9.00%, 0 = 0%)
+  taxRate     Int?
+
+  // ✅ Catégorie (V1: optionnelle pour aller vite)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  stockItems         StockItem[]
+  stockMoves         StockMove[]
+  stockTransferLines StockTransferLine[]
+  stockInventoryLines StockInventoryLine[]
+
+  purchaseOrderLines PurchaseOrderLine[]
+
+  saleLines SaleLine[]
+  // Lignes de BL hors vente (produit direct)
+  deliveryItems DeliveryLineItem[]
+
+  invoiceLines InvoiceLine[]
+  priceListItems PriceListItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([categoryId])
+  @@index([nameSearch])
+  @@index([taxCode])
+}
+
+model PriceList {
+  id String @id @default(cuid())
+
+  // Code court unique (ex: TARIF_DEPOT, TARIF_MAG1)
+  code String @unique
+  name String
+  note String?
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  items PriceListItem[]
+
+  warehouses Warehouse[]
+  stores     Store[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([code])
+  @@index([name])
+}
+
+model PriceListItem {
+  id String @id @default(cuid())
+
+  priceListId String
+  productId   String
+
+  // Prix unitaire (FCFA) pour cette grille
+  unitPrice Int
+
+  priceList PriceList @relation(fields: [priceListId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([priceListId, productId])
+  @@index([priceListId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model Warehouse {
+  id String @id @default(cuid())
+
+  // Code court unique pour intégrations/exports (ex: PRINCIPAL, DEPOT2)
+  code    String  @unique
+  name    String
+  address String?
+
+  kind WarehouseKind @default(DEPOT)
+
+  // Entrepôts techniques (ex: TRANSIT) à masquer de l’UX métier par défaut
+  isSystem Boolean @default(false)
+
+  // Grille tarifaire par défaut (ex: Tarif Dépôt)
+  priceListId String?
+  priceList   PriceList? @relation(fields: [priceListId], references: [id])
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  stockItems    StockItem[]
+  stockMoves    StockMove[]
+  transfersFrom StockTransfer[] @relation("StockTransferFrom")
+  transfersTo   StockTransfer[] @relation("StockTransferTo")
+  stockInventories StockInventory[]
+
+  purchaseOrders PurchaseOrder[]
+
+  sales      Sale[]
+  orders     Order[]
+  deliveries Delivery[]
+
+  // Tournées (départs)
+  deliveryTrips DeliveryTrip[]
+
+  invoices Invoice[]
+  payments Payment[]
+  store    Store?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
+  @@index([isSystem])
+  @@index([priceListId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([isActive, deletedAt, kind])
+  @@index([code])
+}
+
+model Supplier {
+  id         String @id @default(cuid())
+  name       String
+  nameSearch String @default("")
+
+  // Contacts
+  contactName String?
+  phone       String?
+  email       String?
+
+  // Infos société
+  address          String?
+  note             String?
+  taxId            String?
+  paymentTermsDays Int?
+  creditLimit      Int?
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([name])
+  @@index([nameSearch])
+  @@index([taxId])
+}
+
+model Store {
+  id String @id @default(cuid())
+
+  // Code court unique (ex: MAG1, ATLANTIS, BOUTIQUE_ABJ)
+  code    String  @unique
+  name    String
+  address String?
+
+  // Stock source par défaut (entrepôt rattaché)
+  // 1 store = 1 warehouse (stock dédié)
+  warehouseId String    @unique
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  // Grille tarifaire par défaut (ex: Tarif Magasin)
+  priceListId String?
+  priceList   PriceList? @relation(fields: [priceListId], references: [id])
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  sales    Sale[]
+  invoices Invoice[]
+  payments Payment[]
+
+  // Tickets de caisse (POS)
+  posReceipts PosReceipt[]
+
+  // Tournées / arrêts (logistique)
+  deliveryStops DeliveryStop[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([name])
+  @@index([code])
+  @@index([warehouseId]) // redondant avec @unique, mais ok pour lisibilité
+  @@index([priceListId])
+}
+
+enum WarehouseKind {
+  DEPOT
+  STORE
+}
+
+enum SaleChannel {
+  DEPOT
+  STORE
+}
+
+enum FulfillmentMethod {
+  PICKUP
+  DELIVERY
+}
+
+
+enum StockMoveKind {
+  IN
+  OUT
+  ADJUST
+}
+
+
+enum StockTransferStatus {
+  DRAFT
+  SHIPPED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+  DISPUTED
+}
+
+enum StockTransferPurpose {
+  // Réassort standard (entrepôt -> magasin)
+  STORE_REPLENISH
+
+  // Rééquilibrage interne (ex: entrepôt -> entrepôt)
+  REBALANCE
+
+  // Livraison interne GH (si tu lies Transfer <-> Delivery)
+  INTERNAL_DELIVERY
+
+  // Autres cas métier (à garder ouvert)
+  OTHER
+}
+
+enum StockInventoryStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum StockInventoryMode {
+  FULL
+  CATEGORY
+  FREE
+}
+
+enum StockInventoryLineStatus {
+  PENDING
+  COUNTED
+  SKIPPED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SaleStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  PREPARED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT // brouillon (modifiable)
+  ISSUED // validée/verrouillée
+  SENT // envoyée FNE (ou en cours)
+  ACCEPTED // acceptée (DGI/FNE)
+  ERROR // erreur FNE
+  CANCELLED // annulée
+}
+
+enum FneStatus {
+  PENDING // prêt à envoyer / en attente
+  SENT // envoyé (ou en cours)
+  ACCEPTED // accepté (DGI/FNE)
+  ERROR // erreur / rejet
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY
+  CARD
+  BANK_TRANSFER
+  OTHER
+}
+
+enum DeliveryStatus {
+  DRAFT
+  PREPARED
+  OUT_FOR_DELIVERY
+  PARTIALLY_DELIVERED
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum DeliveryTripStatus {
+  DRAFT
+  LOADED
+  IN_PROGRESS
+  DONE
+  CLOSED
+  CANCELLED
+}
+
+enum DeliveryStopStatus {
+  PENDING
+  VISITED
+  PARTIAL
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model StockItem {
+  id          String @id @default(cuid())
+  warehouseId String
+  productId   String
+  quantity    Int    @default(0)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([warehouseId, productId])
+  @@index([warehouseId, productId])
+  @@index([warehouseId])
+  @@index([productId])
+}
+
+model StockTransfer {
+  id String @id @default(cuid())
+
+  // source -> destination
+  fromWarehouseId String
+  toWarehouseId   String
+
+  // Statut ERP: le stock ne devrait bouger qu'à l'expédition/réception (workflow)
+  status StockTransferStatus @default(DRAFT)
+
+  // Type métier du transfert (évite de mélanger transferts internes / livraison / réassort...)
+  purpose StockTransferPurpose @default(STORE_REPLENISH)
+
+  // Regroupement ERP : 2 transferts (DEPOT->TRANSIT, TRANSIT->STORE) partagent le même journeyId
+  journeyId String?
+
+  // Traçabilité (optionnels pour ne pas casser la V1)
+  number     String?  @unique // ex: TR-2026-0001
+  shippedAt  DateTime?
+  shippedBy  String?
+  receivedAt DateTime?
+  receivedBy String?
+
+  note String?
+
+  fromWarehouse Warehouse @relation("StockTransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse @relation("StockTransferTo", fields: [toWarehouseId], references: [id])
+
+  // Lignes (multi-produits)
+  lines StockTransferLine[]
+
+  // Les mouvements générés (OUT + IN) — liés via transferId
+  moves StockMove[]
+
+  // Livraison liée (1 transfert -> 0/1 livraison)
+  delivery Delivery?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([status])
+  @@index([purpose])
+  @@index([journeyId])
+  @@index([shippedAt])
+  @@index([receivedAt])
+  @@index([createdAt])
+}
+
+model StockTransferLine {
+  id String @id @default(cuid())
+
+  transferId String
+  productId  String
+
+  // Quantité prévue/envoyée
+  qty Int
+
+  // Quantité réellement reçue (0 tant que non réceptionné)
+  qtyReceived Int @default(0)
+
+  note String?
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id])
+  product  Product       @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([transferId, productId])
+  @@index([transferId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model StockMove {
+  id   String        @id @default(cuid())
+  kind StockMoveKind
+
+  warehouseId String
+  productId   String
+
+  // Delta signé : + pour entrée, - pour sortie
+  qtyDelta Int
+
+  // Pour lier à un document (BL, facture, inventaire…)
+  refType String?
+  refId   String?
+
+  // Lien fort vers un transfert (ultra pro)
+  transferId String?
+  transfer   StockTransfer? @relation(fields: [transferId], references: [id])
+
+  // Lien fort vers un inventaire (ultra pro)
+  inventoryId String?
+  inventory   StockInventory? @relation(fields: [inventoryId], references: [id])
+
+  note String?
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([warehouseId, productId])
+  @@index([createdAt])
+  @@index([inventoryId])
+}
+
+model StockInventory {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: INVSTK-2026-0001)
+  number String @unique
+
+  status StockInventoryStatus @default(DRAFT)
+  mode   StockInventoryMode   @default(FULL)
+
+  // Lieu inventorié (entrepôt ou magasin technique via Warehouse.kind)
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  // Optionnel: inventaire par catégorie
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  note String?
+
+  // Audit / verrouillage
+  postedAt DateTime?
+  postedBy String?
+
+  lines StockInventoryLine[]
+  moves StockMove[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([mode])
+  @@index([warehouseId])
+  @@index([categoryId])
+  @@index([createdAt])
+}
+
+model StockInventoryLine {
+  id String @id @default(cuid())
+
+  inventoryId String
+  inventory   StockInventory @relation(fields: [inventoryId], references: [id])
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Snapshot du stock système au moment de la génération des lignes
+  expectedQty Int @default(0)
+
+  // Stock compté par l’utilisateur (null tant que non saisi)
+  countedQty Int?
+
+  // Ecart stock (counted - expected). Stocké pour audit/perf.
+  delta Int @default(0)
+
+  status StockInventoryLineStatus @default(PENDING)
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([inventoryId, productId])
+  @@index([inventoryId])
+  @@index([productId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model PurchaseOrder {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: PO-2026-0001)
+  number String              @unique
+  status PurchaseOrderStatus @default(DRAFT)
+
+  supplierId  String
+  warehouseId String
+
+  note String?
+
+  supplier  Supplier            @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse           @relation(fields: [warehouseId], references: [id])
+  lines     PurchaseOrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@index([createdAt])
+}
+
+model PurchaseOrderLine {
+  id String @id @default(cuid())
+
+  purchaseOrderId String
+  productId       String
+
+  qtyOrdered Int
+  unitPrice  Int @default(0) // FCFA (XOF)
+
+  // V1: suivi réception (peut rester simple)
+  qtyReceived Int @default(0)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  product       Product       @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([purchaseOrderId, productId])
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// ✅ Commande dépôt (B2B) — module Orders (Option B)
+model Order {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: OR-2026-0001)
+  number String @unique
+
+  status OrderStatus @default(DRAFT)
+
+  // Dépôt / expéditeur
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  // Client B2B (recommandé requis côté API)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  // Mode : enlèvement / livraison + frais
+  fulfillment FulfillmentMethod @default(PICKUP)
+  shippingFee Int @default(0)
+
+  note String?
+
+  // Totaux snapshot (FCFA)
+  totalHT  Int @default(0)
+  totalTTC Int @default(0)
+
+  // Timestamps métier (optionnels)
+  confirmedAt DateTime?
+  preparedAt  DateTime?
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+
+  lines OrderLine[]
+
+  // Documents liés
+  invoice Invoice?
+  deliveries Delivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([warehouseId])
+  @@index([clientId])
+  @@index([fulfillment])
+  @@index([createdAt])
+}
+
+model OrderLine {
+  id String @id @default(cuid())
+
+  orderId   String
+  productId String
+
+  qty       Int
+  unitPrice Int @default(0) // FCFA (XOF)
+
+  // Préparation / livraison (cumul) — permet le partiel
+  qtyPrepared  Int @default(0)
+  qtyDelivered Int @default(0)
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, productId])
+  @@index([orderId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model Sale {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: SA-2026-0001)
+  number String     @unique
+  status SaleStatus @default(DRAFT)
+  channel SaleChannel @default(DEPOT)
+  fulfillment FulfillmentMethod @default(PICKUP)
+
+  // Frais de livraison (FCFA) — utilisé quand fulfillment=DELIVERY
+  shippingFee Int @default(0)
+
+  // Client optionnel (vente comptoir)
+  clientId    String?
+  warehouseId String
+  storeId     String?
+
+  note String?
+
+  // Totaux (FCFA) - snapshot au moment de l'encaissement/post
+  totalHT  Int @default(0)
+  totalTTC Int @default(0)
+
+  // Encaissement (V1 simple)
+  paymentStatus PaymentStatus @default(UNPAID)
+  amountPaid    Int           @default(0)
+  postedAt      DateTime?
+
+  // Préparation FNE (V1: champs optionnels)
+  fneStatus FneStatus?
+  fneRef    String? // identifiant/numéro retourné par la DGI
+  fneSentAt DateTime?
+
+  client    Client?    @relation(fields: [clientId], references: [id])
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id])
+  store     Store?     @relation(fields: [storeId], references: [id])
+  lines     SaleLine[]
+
+  invoice   Invoice?
+  posReceipt PosReceipt?
+  payments  Payment[]
+  fneEvents FneEvent[] @relation("FneEventSale")
+
+  deliveries Delivery[]
+
+  // Liaison arrêt -> ventes (Option A)
+  stopSales StopSale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([channel])
+  @@index([fulfillment])
+  @@index([clientId])
+  @@index([warehouseId])
+  @@index([storeId])
+  @@index([createdAt])
+}
+model PosReceipt {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: TCK-2026-0001)
+  number String @unique
+
+  // 1 ticket = 1 vente caisse
+  saleId String @unique
+  sale   Sale   @relation(fields: [saleId], references: [id])
+
+  // Magasin (obligatoire pour un ticket)
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id])
+
+  // Snapshot utile (évite de recalculer/afficher)
+  totalTTC Int @default(0)
+  amountPaid Int @default(0)
+
+  // Audit
+  issuedAt DateTime? // moment d’impression/validation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@index([createdAt])
+}
+
+model SaleLine {
+  id String @id @default(cuid())
+
+  saleId    String
+  productId String
+
+  qty       Int
+  unitPrice Int @default(0) // FCFA (XOF)
+
+  // Livraison (cumul) — permet le partiel
+  qtyDelivered Int @default(0)
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  deliveryLines DeliveryLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([saleId, productId])
+  @@index([saleId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model Delivery {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: DL-2026-0001)
+  number String         @unique
+  status DeliveryStatus @default(DRAFT)
+
+  saleId      String?
+
+  // Option B: BL issu d'une commande dépôt
+  orderId     String?
+  warehouseId String
+
+  // Lien vers un transfert stock (optionnel) — 1 livraison = 1 transfert
+  transferId String? @unique
+  transfer   StockTransfer? @relation(fields: [transferId], references: [id])
+
+  // Livreur interne (optionnel en V1)
+  driverId String?
+
+  // ✅ Tournée (multi-clients) — optionnel
+  tripId String?
+  stopId String?
+
+  note String?
+
+  preparedAt   DateTime?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+
+  // Preuves simples (V1)
+  receiverName  String?
+  receiverPhone String?
+  proofNote     String?
+
+  // Lien public de suivi (client) — ne révèle pas la position exacte
+  // V1: optionnel pour migration (on le rendra required + default ensuite)
+  trackingToken String? @unique
+
+  sale      Sale?     @relation(fields: [saleId], references: [id])
+  order     Order?    @relation(fields: [orderId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  driver    Driver?   @relation(fields: [driverId], references: [id])
+  trip DeliveryTrip? @relation(fields: [tripId], references: [id])
+  stop DeliveryStop? @relation(fields: [stopId], references: [id])
+
+  lines DeliveryLine[]
+  // Lignes de BL hors vente (produit direct)
+  items DeliveryLineItem[]
+
+  events DeliveryEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([saleId])
+  @@index([orderId])
+  @@index([warehouseId])
+  @@index([transferId])
+  @@index([driverId])
+  @@index([tripId])
+  @@index([stopId])
+  @@index([createdAt])
+  @@index([trackingToken])
+}
+
+model DeliveryLine {
+  id String @id @default(cuid())
+
+  deliveryId String
+  saleLineId String
+
+  // Quantité livrée pour cette livraison
+  qtyDelivered Int
+
+  note String?
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  saleLine SaleLine @relation(fields: [saleLineId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([deliveryId, saleLineId])
+  @@index([deliveryId])
+  @@index([saleLineId])
+  @@index([createdAt])
+}
+
+// ✅ Option B (ERP clean) — lignes de BL hors vente (non rattachées à une vente)
+// Séparé de DeliveryLine (qui reste strictement lié à SaleLine)
+model DeliveryLineItem {
+  id String @id @default(cuid())
+
+  deliveryId String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Quantité livrée/transportée pour ce BL
+  qty Int
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([deliveryId, productId])
+  @@index([deliveryId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model DeliveryEvent {
+  id String @id @default(cuid())
+
+  deliveryId String
+
+  // Type d’événement (V1): PREPARED / OUT_FOR_DELIVERY / PARTIALLY_DELIVERED / DELIVERED / FAILED / NOTE
+  type String
+
+  // Statut snapshot au moment de l’événement (optionnel)
+  status DeliveryStatus?
+
+  message String?
+
+  // Meta JSON (compact) pour audit (optionnel)
+  meta String?
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([deliveryId])
+  @@index([createdAt])
+  @@index([type])
+  @@index([status])
+}
+
+// ✅ Tournée (camion / journée du livreur) — regroupe plusieurs arrêts et plusieurs BL
+model DeliveryTrip {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: TRIP-2026-0001)
+  number String @unique
+
+  status DeliveryTripStatus @default(DRAFT)
+
+  // Départ: un seul entrepôt (chargement)
+  fromWarehouseId String
+  fromWarehouse   Warehouse @relation(fields: [fromWarehouseId], references: [id])
+
+  // Livreur (optionnel pour pouvoir créer une tournée sans affectation)
+  driverId String?
+  driver   Driver? @relation(fields: [driverId], references: [id])
+
+  note String?
+
+  startedAt DateTime?
+  closedAt  DateTime?
+
+  // Arrêts (ordre)
+  stops DeliveryStop[]
+
+  // BL rattachés à la tournée (optionnel)
+  deliveries Delivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([fromWarehouseId])
+  @@index([driverId])
+  @@index([startedAt])
+  @@index([closedAt])
+  @@index([createdAt])
+}
+
+// ✅ Arrêt de tournée (1 client / 1 adresse) — peut regrouper plusieurs ventes
+model DeliveryStop {
+  id String @id @default(cuid())
+
+  tripId String
+  trip   DeliveryTrip @relation(fields: [tripId], references: [id])
+
+  // Ordre de passage
+  sequence Int
+
+  status DeliveryStopStatus @default(PENDING)
+
+  // Cible (optionnels, snapshots pour rester stable)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  // Optionnel: magasin cible (si utile)
+  storeId String?
+  store   Store? @relation(fields: [storeId], references: [id])
+
+  addressSnapshot String?
+  phoneSnapshot   String?
+  contactNameSnapshot String?
+
+  note String?
+
+  visitedAt DateTime?
+
+  // Ventes rattachées à cet arrêt
+  stopSales StopSale[]
+
+  // Encaissements (cash / mobile money ...)
+  payments StopPayment[]
+
+  // BL rattachés directement à l’arrêt (optionnel)
+  deliveries Delivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, sequence])
+  @@index([tripId])
+  @@index([status])
+  @@index([clientId])
+  @@index([storeId])
+  @@index([visitedAt])
+  @@index([createdAt])
+}
+
+// ✅ Liaison Stop ↔ Vente (Option A) : un arrêt peut couvrir plusieurs ventes
+model StopSale {
+  id String @id @default(cuid())
+
+  stopId String
+  stop   DeliveryStop @relation(fields: [stopId], references: [id])
+
+  saleId String
+  sale   Sale @relation(fields: [saleId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([stopId, saleId])
+  @@index([stopId])
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+// ✅ Encaissement au niveau stop (cash / mobile money / etc.)
+model StopPayment {
+  id String @id @default(cuid())
+
+  stopId String
+  stop   DeliveryStop @relation(fields: [stopId], references: [id])
+
+  method PaymentMethod
+  amount Int // FCFA (XOF)
+
+  // Référence transaction (mobile money, carte, etc.)
+  reference String?
+
+  note String?
+
+  receivedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([stopId])
+  @@index([method])
+  @@index([receivedAt])
+  @@index([createdAt])
+}
+
+model Invoice {
+  id String @id @default(cuid())
+
+  // Numéro lisible (ex: INV-2026-0001)
+  number String        @unique
+  status InvoiceStatus @default(DRAFT)
+
+  // Optionnel: une facture peut venir d’une vente, ou être créée manuellement
+  saleId String? @unique
+
+  // Option B: facture issue d'une commande dépôt
+  orderId String? @unique
+
+  // Client optionnel (facture comptoir)
+  clientId    String?
+  warehouseId String
+  storeId     String?
+
+  note String?
+
+  // Totaux (FCFA) - V1 simple (peut évoluer en TVA/remises)
+  totalHT  Int @default(0)
+  totalTTC Int @default(0)
+
+  // Paiement (V1 simple)
+  paymentStatus PaymentStatus @default(UNPAID)
+  amountPaid    Int           @default(0)
+  dueDate       DateTime?
+
+  issuedAt DateTime?
+
+  // Préparation FNE
+  fneStatus FneStatus?
+  fneRef    String? // identifiant/numéro retourné par la DGI
+  fneSentAt DateTime?
+
+  sale      Sale?         @relation(fields: [saleId], references: [id])
+  order     Order?        @relation(fields: [orderId], references: [id])
+  client    Client?       @relation(fields: [clientId], references: [id])
+  warehouse Warehouse     @relation(fields: [warehouseId], references: [id])
+  store     Store?        @relation(fields: [storeId], references: [id])
+  lines     InvoiceLine[]
+  payments  Payment[]
+  fneEvents FneEvent[]    @relation("FneEventInvoice")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([saleId])
+  @@index([orderId])
+  @@index([clientId])
+  @@index([warehouseId])
+  @@index([storeId])
+  @@index([createdAt])
+}
+
+model InvoiceLine {
+  id String @id @default(cuid())
+
+  invoiceId String
+
+  // Produit optionnel (si un jour le produit est supprimé du catalogue, la ligne reste lisible)
+  productId String?
+
+  description String
+  qty         Int
+  unitPrice   Int    @default(0) // FCFA (XOF)
+
+  // Taxe figée au moment de la facturation (pour rester conforme si le produit change)
+  taxCode String?
+  // Taux en basis points (ex: 900 = 9.00%, 0 = 0%)
+  taxRate Int?
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model FneEvent {
+  id String @id @default(cuid())
+
+  // Optionnel: l’événement peut être lié à une facture ou une vente
+  invoiceId String?
+  saleId    String?
+
+  status FneStatus
+
+  // Pour debug/audit (V1) — tu peux stocker un hash + petits extraits
+  payloadHash String?
+  request     String? // JSON (compact) / résumé
+  response    String? // JSON (compact) / résumé
+  error       String?
+
+  invoice Invoice? @relation("FneEventInvoice", fields: [invoiceId], references: [id])
+  sale    Sale?    @relation("FneEventSale", fields: [saleId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([saleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  method PaymentMethod
+  amount Int // FCFA (XOF)
+
+  // Référence transaction (mobile money, carte, virement…)
+  reference String?
+
+  // Date réelle d'encaissement (peut différer de createdAt)
+  receivedAt DateTime?
+
+  // Optionnel: rattacher à une vente ou une facture
+  saleId    String?
+  invoiceId String?
+
+  // Optionnel: pour filtre/traçabilité
+  clientId    String?
+  warehouseId String?
+  storeId     String?
+
+  note String?
+
+  sale      Sale?      @relation(fields: [saleId], references: [id])
+  invoice   Invoice?   @relation(fields: [invoiceId], references: [id])
+  client    Client?    @relation(fields: [clientId], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
+  store     Store?     @relation(fields: [storeId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([invoiceId])
+  @@index([clientId])
+  @@index([warehouseId])
+  @@index([storeId])
+  @@index([createdAt])
+  @@index([method])
+  @@index([reference])
+  @@index([receivedAt])
+  @@index([method, receivedAt])
+}
