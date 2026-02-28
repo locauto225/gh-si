@@ -476,10 +476,10 @@ exports.stockService = {
         if (!t) {
             throw new errors_2.AppError("Transfer not found", { status: 404, code: errors_2.ERROR_CODES.NOT_FOUND });
         }
-        const delivery = await prisma_1.prisma.delivery.findUnique({
+        const delivery = (await prisma_1.prisma.delivery.findUnique({
             where: { transferId: id },
             select: { id: true, number: true },
-        });
+        }));
         const base = mapTransfer(t);
         return {
             item: {
@@ -690,17 +690,20 @@ exports.stockService = {
                 where: { warehouseId: fromWarehouseId, productId: { in: productIds } },
                 select: { productId: true, quantity: true },
             });
-            const sourceMap = new Map(sourceItems.map((s) => [s.productId, s.quantity]));
+            const sourceMap = new Map(sourceItems.map((s) => [s.productId, Number(s.quantity)]));
             for (const l of transfer.lines ?? []) {
-                const available = sourceMap.get(l.productId) ?? 0;
-                if (available - l.qty < 0) {
-                    throw (0, errors_1.insufficientStockError)({ available, requested: l.qty });
+                const qty = Number(l.qty);
+                const available = Number(sourceMap.get(l.productId) ?? 0);
+                if (available - qty < 0) {
+                    throw (0, errors_1.insufficientStockError)({ available, requested: qty });
                 }
             }
             // Apply source decrements
             for (const l of transfer.lines ?? []) {
-                const current = sourceMap.get(l.productId) ?? 0;
-                const next = current - l.qty;
+                const qty = Number(l.qty);
+                const current = Number(sourceMap.get(l.productId) ?? 0);
+                const next = current - qty;
+                sourceMap.set(l.productId, next);
                 await tx.stockItem.upsert({
                     where: { warehouseId_productId: { warehouseId: fromWarehouseId, productId: l.productId } },
                     update: { quantity: next },
@@ -713,7 +716,7 @@ exports.stockService = {
                     kind: "OUT",
                     warehouseId: transfer.fromWarehouseId,
                     productId: l.productId,
-                    qtyDelta: -l.qty,
+                    qtyDelta: -Number(l.qty),
                     transferId: transfer.id,
                     refType: null,
                     refId: null,
@@ -729,10 +732,11 @@ exports.stockService = {
                     where: { warehouseId: transitWarehouseId, productId: { in: productIds } },
                     select: { productId: true, quantity: true },
                 });
-                const transitMap = new Map(transitRows.map((r) => [r.productId, r.quantity]));
+                const transitMap = new Map(transitRows.map((r) => [r.productId, Number(r.quantity)]));
                 for (const l of transfer.lines ?? []) {
-                    const current = transitMap.get(l.productId) ?? 0;
-                    const next = current + l.qty;
+                    const qty = Number(l.qty);
+                    const current = Number(transitMap.get(l.productId) ?? 0);
+                    const next = current + qty;
                     transitMap.set(l.productId, next);
                     await tx.stockItem.upsert({
                         where: { warehouseId_productId: { warehouseId: transitWarehouseId, productId: l.productId } },
@@ -746,7 +750,7 @@ exports.stockService = {
                         kind: "IN",
                         warehouseId: transitWarehouseId,
                         productId: l.productId,
-                        qtyDelta: l.qty,
+                        qtyDelta: Number(l.qty),
                         transferId: transfer.id,
                         refType: null,
                         refId: null,
@@ -967,7 +971,7 @@ exports.stockService = {
                 const already = Number(base.qtyReceived ?? 0) || 0;
                 await tx.stockTransferLine.update({
                     where: { id: base.id },
-                    data: { qtyReceived: already + qtyReceived },
+                    data: { qtyReceived: Number(already) + Number(qtyReceived) },
                 });
             }
             // Re-fetch with lines to compute final status
@@ -1058,12 +1062,12 @@ exports.stockService = {
         });
         const ids = transfers.map((t) => t.id);
         const deliveries = ids.length
-            ? await prisma_1.prisma.delivery.findMany({
+            ? (await prisma_1.prisma.delivery.findMany({
                 where: { transferId: { in: ids } },
                 select: { id: true, number: true, transferId: true },
-            })
+            }))
             : [];
-        const deliveryByTransferId = new Map(deliveries.map((d) => [d.transferId, d]));
+        const deliveryByTransferId = new Map(deliveries.map((d) => [String(d.transferId), d]));
         return {
             items: transfers.map((t) => {
                 const base = mapTransfer(t);

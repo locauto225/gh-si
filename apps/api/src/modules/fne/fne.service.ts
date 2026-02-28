@@ -1,7 +1,10 @@
 import { prisma } from "../../db/prisma";
 import { AppError, ERROR_CODES } from "../../lib/errors";
-import type { Prisma, FneStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import type { FneEventCreateInput, FneEventsListQuery } from "./fne.schemas";
+
+// Prisma schema in this repo does not export a FneStatus enum; keep a local type for TS/build.
+type FneStatus = "PENDING" | "SENT" | "ACCEPTED" | "ERROR";
 
 async function assertInvoiceExists(tx: Prisma.TransactionClient, id: string) {
   const inv = await tx.invoice.findUnique({ where: { id } });

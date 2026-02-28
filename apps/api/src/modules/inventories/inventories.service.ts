@@ -200,8 +200,9 @@ export const inventoriesService = {
         data.status ??
         (nextCounted !== null && nextCounted !== undefined ? "COUNTED" : "PENDING");
 
+      const expectedQty = Number((line as any).expectedQty ?? 0);
       const delta =
-        nextCounted === null || nextCounted === undefined ? 0 : nextCounted - (line.expectedQty ?? 0);
+        nextCounted === null || nextCounted === undefined ? 0 : Number(nextCounted) - expectedQty;
 
       const updated = await (tx as any).stockInventoryLine.update({
         where: { id: lineId },

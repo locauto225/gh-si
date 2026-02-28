@@ -171,7 +171,8 @@ exports.inventoriesService = {
             const nextCounted = countedQty === undefined ? line.countedQty : countedQty;
             const nextStatus = data.status ??
                 (nextCounted !== null && nextCounted !== undefined ? "COUNTED" : "PENDING");
-            const delta = nextCounted === null || nextCounted === undefined ? 0 : nextCounted - (line.expectedQty ?? 0);
+            const expectedQty = Number(line.expectedQty ?? 0);
+            const delta = nextCounted === null || nextCounted === undefined ? 0 : Number(nextCounted) - expectedQty;
             const updated = await tx.stockInventoryLine.update({
                 where: { id: lineId },
                 data: {
