@@ -8,7 +8,6 @@ import type {
   StockTransferReceiveInput,
 } from "./stock.schemas";
 
-import { Prisma } from "@prisma/client";
 
 function assertKindDelta(kind: StockMoveCreateInput["kind"], qtyDelta: number) {
   if (!Number.isInteger(qtyDelta) || qtyDelta === 0) {
@@ -154,7 +153,7 @@ function isFullyReceived(lines: any[]) {
 
 // Helper to log a delivery event if transfer is linked to a delivery
 async function addDeliveryEventForTransferTx(
-  tx: Prisma.TransactionClient,
+  tx: any,
   transferId: string,
   input: { type: string; message: string; meta?: unknown }
 ) {
@@ -177,22 +176,18 @@ async function addDeliveryEventForTransferTx(
   });
 }
 
-const stockTransferWithLinesArgs = Prisma.validator<Prisma.StockTransferDefaultArgs>()({
-  include: {
-    fromWarehouse: true,
-    toWarehouse: true,
-    lines: {
-      orderBy: { createdAt: "asc" },
-      include: { product: true },
-    },
+const stockTransferWithLinesInclude: any = {
+  fromWarehouse: true,
+  toWarehouse: true,
+  lines: {
+    orderBy: { createdAt: "asc" },
+    include: { product: true },
   },
-});
+};
 
-type StockTransferWithLines = Prisma.StockTransferGetPayload<
-  typeof stockTransferWithLinesArgs
->;
+type StockTransferWithLines = any;
 
-function mapTransfer(t: StockTransferWithLines) {
+function mapTransfer(t: any) {
   return {
     id: t.id,
     status: t.status,
@@ -548,7 +543,7 @@ export const stockService = {
   getTransfer: async (id: string) => {
     const t = await prisma.stockTransfer.findUnique({
       where: { id },
-      include: stockTransferWithLinesArgs.include,
+      include: stockTransferWithLinesInclude,
     });
 
     if (!t) {
@@ -1193,7 +1188,7 @@ export const stockService = {
     const transfers = await prisma.stockTransfer.findMany({
       orderBy: { createdAt: "desc" },
       take: limit,
-      include: stockTransferWithLinesArgs.include,
+      include: stockTransferWithLinesInclude,
     });
 
     const ids = transfers.map((t) => t.id);

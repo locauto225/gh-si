@@ -1,6 +1,5 @@
 import { prisma } from "../../db/prisma";
 import { AppError, ERROR_CODES } from "../../lib/errors";
-import { Prisma } from "@prisma/client";
 
 function makeInventoryNumber() {
   // Simple + robuste (unique) sans compteur: INVSTK-YYYYMMDD-xxxxx
@@ -12,27 +11,26 @@ function makeInventoryNumber() {
   return `INVSTK-${y}${m}${day}-${rand}`;
 }
 
-const inventoryListInclude = Prisma.validator<Prisma.StockInventoryInclude>()({
+const inventoryListInclude: any = {
   warehouse: true,
   category: true,
   _count: { select: { lines: true } },
-});
+};
 
-const inventoryGetInclude = Prisma.validator<Prisma.StockInventoryInclude>()({
+const inventoryGetInclude: any = {
   warehouse: true,
   category: true,
   lines: {
     orderBy: [{ status: "asc" }, { createdAt: "asc" }],
     include: { product: { include: { category: true } } },
   },
-});
+};
 
-const inventoryPostInclude = Prisma.validator<Prisma.StockInventoryInclude>()({
+const inventoryPostInclude: any = {
   warehouse: { select: { id: true, kind: true } },
   lines: { include: { product: { select: { id: true } } } },
-});
+};
 
-type InventoryWithLinesForPost = Prisma.StockInventoryGetPayload<{ include: typeof inventoryPostInclude }>;
 
 export const inventoriesService = {
   list: async (q: { warehouseId?: string; status?: "DRAFT" | "POSTED" | "CANCELLED"; limit?: number }) => {
@@ -224,7 +222,7 @@ export const inventoriesService = {
       const inv = (await tx.stockInventory.findUnique({
         where: { id: inventoryId },
         include: inventoryPostInclude,
-      })) as InventoryWithLinesForPost | null;
+      })) as any;
 
       if (!inv) throw new AppError("Inventory not found", { status: 404, code: ERROR_CODES.NOT_FOUND });
       if (inv.status !== "DRAFT") {

@@ -1,6 +1,5 @@
 // apps/api/src/modules/dashboard/dashboard.service.ts
 import { prisma } from "../../db/prisma";
-import { Prisma } from "@prisma/client";
 import type { DashboardSummary, DashboardSummaryQuery } from "./dashboard.schemas";
 
 function startOfDay(d: Date) {
@@ -134,25 +133,34 @@ export const dashboardService = {
 
     // --- Charts
     // dailyRevenueTTC (POSTED sales) and topProducts (POSTED lines)
-    const whSql = q.warehouseId
-      ? Prisma.sql` AND s."warehouseId" = ${q.warehouseId} `
-      : Prisma.empty;
+    const hasWarehouse = Boolean(q.warehouseId);
 
-    const dailyRows = await prisma.$queryRaw<
-      { day: string; total: number | bigint | null }[]
-    >(Prisma.sql`
-      SELECT
-        strftime('%Y-%m-%d', s."createdAt") as day,
-        COALESCE(SUM(s."totalTTC"), 0) as total
-      FROM "Sale" s
-      WHERE
-        s."status" = 'POSTED'
-        AND s."createdAt" >= ${from}
-        AND s."createdAt" <= ${to}
-        ${whSql}
-      GROUP BY day
-      ORDER BY day ASC
-    `);
+    const dailyRows = hasWarehouse
+      ? await prisma.$queryRaw<{ day: string; total: number | bigint | null }[]>`
+          SELECT
+            strftime('%Y-%m-%d', s."createdAt") as day,
+            COALESCE(SUM(s."totalTTC"), 0) as total
+          FROM "Sale" s
+          WHERE
+            s."status" = 'POSTED'
+            AND s."createdAt" >= ${from}
+            AND s."createdAt" <= ${to}
+            AND s."warehouseId" = ${q.warehouseId}
+          GROUP BY day
+          ORDER BY day ASC
+        `
+      : await prisma.$queryRaw<{ day: string; total: number | bigint | null }[]>`
+          SELECT
+            strftime('%Y-%m-%d', s."createdAt") as day,
+            COALESCE(SUM(s."totalTTC"), 0) as total
+          FROM "Sale" s
+          WHERE
+            s."status" = 'POSTED'
+            AND s."createdAt" >= ${from}
+            AND s."createdAt" <= ${to}
+          GROUP BY day
+          ORDER BY day ASC
+        `;
 
     const seriesDays = buildDaySeries(from, to);
     const byDay = new Map<string, number>();
@@ -166,27 +174,60 @@ export const dashboardService = {
       totalTTC: byDay.get(date) ?? 0,
     }));
 
-    const topRows = await prisma.$queryRaw<
-      { productId: string; sku: string | null; name: string | null; qty: number | bigint | null; revenue: number | bigint | null }[]
-    >(Prisma.sql`
-      SELECT
-        p."id" as productId,
-        p."sku" as sku,
-        p."name" as name,
-        COALESCE(SUM(sl."qty"), 0) as qty,
-        COALESCE(SUM(sl."qty" * sl."unitPrice"), 0) as revenue
-      FROM "SaleLine" sl
-      JOIN "Sale" s ON s."id" = sl."saleId"
-      JOIN "Product" p ON p."id" = sl."productId"
-      WHERE
-        s."status" = 'POSTED'
-        AND s."createdAt" >= ${from}
-        AND s."createdAt" <= ${to}
-        ${whSql}
-      GROUP BY p."id"
-      ORDER BY revenue DESC
-      LIMIT 5
-    `);
+    const topRows = hasWarehouse
+      ? await prisma.$queryRaw<
+          {
+            productId: string;
+            sku: string | null;
+            name: string | null;
+            qty: number | bigint | null;
+            revenue: number | bigint | null;
+          }[]
+        >`
+          SELECT
+            p."id" as productId,
+            p."sku" as sku,
+            p."name" as name,
+            COALESCE(SUM(sl."qty"), 0) as qty,
+            COALESCE(SUM(sl."qty" * sl."unitPrice"), 0) as revenue
+          FROM "SaleLine" sl
+          JOIN "Sale" s ON s."id" = sl."saleId"
+          JOIN "Product" p ON p."id" = sl."productId"
+          WHERE
+            s."status" = 'POSTED'
+            AND s."createdAt" >= ${from}
+            AND s."createdAt" <= ${to}
+            AND s."warehouseId" = ${q.warehouseId}
+          GROUP BY p."id"
+          ORDER BY revenue DESC
+          LIMIT 5
+        `
+      : await prisma.$queryRaw<
+          {
+            productId: string;
+            sku: string | null;
+            name: string | null;
+            qty: number | bigint | null;
+            revenue: number | bigint | null;
+          }[]
+        >`
+          SELECT
+            p."id" as productId,
+            p."sku" as sku,
+            p."name" as name,
+            COALESCE(SUM(sl."qty"), 0) as qty,
+            COALESCE(SUM(sl."qty" * sl."unitPrice"), 0) as revenue
+          FROM "SaleLine" sl
+          JOIN "Sale" s ON s."id" = sl."saleId"
+          JOIN "Product" p ON p."id" = sl."productId"
+          WHERE
+            s."status" = 'POSTED'
+            AND s."createdAt" >= ${from}
+            AND s."createdAt" <= ${to}
+          GROUP BY p."id"
+          ORDER BY revenue DESC
+          LIMIT 5
+        `;
 
     const topProducts = topRows.map((r) => {
       const qty = typeof r.qty === "bigint" ? Number(r.qty) : Number(r.qty ?? 0);

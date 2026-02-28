@@ -316,8 +316,16 @@ export const purchasesService = {
         );
       }
 
+      type PurchaseOrderLineLite = {
+        id: string;
+        productId: string;
+        qtyOrdered: number;
+        qtyReceived: number;
+      };
       // map lignes existantes
-      const lineByProduct = new Map(po.lines.map((l) => [l.productId, l]));
+      const lineByProduct = new Map<string, PurchaseOrderLineLite>(
+        (po.lines as any[]).map((l) => [l.productId, l as PurchaseOrderLineLite])
+      );
 
       // valider réception
       const toReceive: Array<{ productId: string; qty: number }> = [];
@@ -331,7 +339,7 @@ export const purchasesService = {
         }
         if (qty === 0) continue;
 
-        const existingLine = lineByProduct.get(l.productId);
+        const existingLine = lineByProduct.get(l.productId as any);
         if (!existingLine) {
           throw new AppError("Produit non présent dans le bon de commande", {
             status: 400,
