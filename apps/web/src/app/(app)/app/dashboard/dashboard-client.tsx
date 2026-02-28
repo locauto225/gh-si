@@ -560,7 +560,7 @@ export default function DashboardClient() {
 
 function MiniBarChart({ data }: { data: Array<{ date: string; totalTTC: number }> }) {
   if (!data || data.length === 0) {
-    return <EmptyState>Aucune donnée sur cette période.</EmptyState>;
+    return <UIEmptyState>Aucune donnée sur cette période.</UIEmptyState>;
   }
   const max = Math.max(...data.map((x) => x.totalTTC), 1);
   return (
