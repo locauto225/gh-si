@@ -8,7 +8,7 @@
     "dev:watch": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "postinstall": "prisma generate",
-    "start": "node dist/server.js",
+    "start": "prisma migrate deploy && node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
