@@ -126,6 +126,7 @@ model Product {
   purchaseOrderLines PurchaseOrderLine[]
 
   saleLines SaleLine[]
+  orderLines OrderLine[]
   // Lignes de BL hors vente (produit direct)
   deliveryItems DeliveryLineItem[]
 
