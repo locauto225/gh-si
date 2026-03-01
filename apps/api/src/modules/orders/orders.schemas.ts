@@ -9,9 +9,26 @@ export const ordersListQuerySchema = z.object({
     .enum(["all", "DRAFT", "CONFIRMED", "PREPARED", "SHIPPED", "DELIVERED", "CANCELLED"])
     .optional()
     .default("all"),
+  logisticsStatus: z
+    .enum(["all", "NO_BL", "TO_PREPARE", "IN_PROGRESS", "PARTIAL", "DONE", "CANCELLED"])
+    .optional()
+    .default("all"),
+  hasRemaining: z
+    .enum(["all", "yes", "no"])
+    .optional()
+    .default("all"),
+  nextAction: z
+    .enum(["all", "CONFIRM", "PREPARE", "CREATE_BL", "DISPATCH", "DELIVER_REMAINDER", "CLOSE_ORDER"])
+    .optional()
+    .default("all"),
   warehouseId: z.string().trim().min(1).optional(),
   clientId: z.string().trim().min(1).optional(),
   q: z.string().trim().max(200).optional(),
+  sortBy: z
+    .enum(["createdAt", "status", "logisticsStatus", "deliveriesCount"]) 
+    .optional()
+    .default("createdAt"),
+  sortDir: z.enum(["asc", "desc"]).optional().default("desc"),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
 });
 
