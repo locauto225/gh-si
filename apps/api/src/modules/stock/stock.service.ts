@@ -635,7 +635,6 @@ export const stockService = {
           toWarehouseId: data.toWarehouseId,
           note: (data as any).note ?? null,
           status: "DRAFT",
-          // A+ ERP: regrouper 2 transferts (DEPOT->TRANSIT et TRANSIT->STORE)
           journeyId: (data as any).journeyId ?? null,
           purpose: (data as any).purpose ?? undefined,
         } as any,
@@ -684,73 +683,24 @@ export const stockService = {
   },
 
   /**
-   * A+ ERP (trajet): crée 2 transferts DRAFT liés par journeyId
-   * - T1: from DEPOT -> TRANSIT
-   * - T2: from TRANSIT -> STORE
-   * - même journeyId sur les deux
-   * - ne bouge pas le stock (stock bouge à ship/receive)
+   * Crée un transfert direct SOURCE → DESTINATION (1 seul document).
+   * Remplace l'ancienne architecture DEPOT→TRANSIT→STORE qui nécessitait
+   * un entrepôt système TRANSIT non garanti en base.
+   *
+   * Alias de createTransferDraft — conservé pour la compatibilité des routes.
    */
   createTransferJourney: async (data: StockTransferCreateInput & { toWarehouseId: string } & any) => {
-    assertTransfer(data);
-
-    // Trouver l'entrepôt TRANSIT (seed garantit code=TRANSIT)
-    const transit = await prisma.warehouse.findFirst({
-      where: { code: "TRANSIT", deletedAt: null },
-      select: { id: true, code: true },
-    });
-    if (!transit) {
-      throw new AppError("TRANSIT warehouse not found", {
-        status: 500,
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details: { code: "TRANSIT" },
-      });
-    }
-
-    const journeyId = typeof (data as any).journeyId === "string" && (data as any).journeyId.trim()
-      ? String((data as any).journeyId).trim()
-      : undefined;
-
-    // JourneyId stable : si non fourni, on génère un cuid via Prisma (petit hack propre)
-    const effectiveJourneyId =
-      journeyId ?? (await prisma.stockTransfer.create({
-        data: {
-          fromWarehouseId: data.fromWarehouseId,
-          toWarehouseId: transit.id,
-          status: "DRAFT" as any,
-          note: "__JOURNEY_PLACEHOLDER__",
-        } as any,
-        select: { id: true },
-      })).id;
-
-    // Si on a créé un placeholder, on le supprime et on recrée les vrais transferts dans une transaction
-    if (!journeyId) {
-      await prisma.stockTransfer.delete({ where: { id: effectiveJourneyId } });
-    }
-
-    const base: any = {
-      note: (data as any).note ?? null,
-      purpose: (data as any).purpose ?? "INTERNAL_DELIVERY",
-      journeyId: effectiveJourneyId,
-      lines: (data as any).lines,
-      productId: (data as any).productId,
-      qty: (data as any).qty,
-    };
-
-    // T1: DEPOT -> TRANSIT
-    const t1 = await stockService.createTransferDraft({
-      ...base,
+    const result = await stockService.createTransferDraft({
       fromWarehouseId: data.fromWarehouseId,
-      toWarehouseId: transit.id,
-    } as any);
-
-    // T2: TRANSIT -> STORE
-    const t2 = await stockService.createTransferDraft({
-      ...base,
-      fromWarehouseId: transit.id,
       toWarehouseId: data.toWarehouseId,
+      note: data.note ?? null,
+      purpose: data.purpose ?? "INTERNAL_DELIVERY",
+      lines: data.lines,
     } as any);
 
-    return { journeyId: effectiveJourneyId, t1: t1.item, t2: t2.item };
+    // Retourne le même format qu'avant ({ t1 }) + raccourci { item }
+    // pour que l'UI (qui attend { item }) et les scripts (qui attendent { t1 }) fonctionnent.
+    return { ...result, t1: result.item, t2: null, journeyId: null };
   },
 
   /**
@@ -827,7 +777,8 @@ export const stockService = {
         })),
       });
 
-      // A+ ERP (TRANSIT): Ship T1 = OUT dépôt + IN transit (stock "en route")
+      // Héritage ERP : si la destination est un entrepôt TRANSIT, les mouvements sont gérés séparément.
+      // Avec des transferts directs (architecture actuelle), isTransitT1 est toujours false.
       const isTransitT1 = String((transfer as any)?.toWarehouse?.code ?? "").toUpperCase() === "TRANSIT";
       if (isTransitT1) {
         const transitWarehouseId = transfer.toWarehouseId;
@@ -996,7 +947,7 @@ export const stockService = {
         }
       }
 
-      // A+ ERP (TRANSIT): Receive T2 = OUT transit + IN magasin (sur les quantités réellement reçues)
+      // Héritage ERP : idem pour isTransitT2 — toujours false avec des transferts directs.
       const isTransitT2 = String((transfer as any)?.fromWarehouse?.code ?? "").toUpperCase() === "TRANSIT";
       if (isTransitT2) {
         const transitWarehouseId = transfer.fromWarehouseId;

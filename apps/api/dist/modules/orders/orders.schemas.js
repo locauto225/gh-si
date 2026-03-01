@@ -10,9 +10,26 @@ exports.ordersListQuerySchema = zod_1.z.object({
         .enum(["all", "DRAFT", "CONFIRMED", "PREPARED", "SHIPPED", "DELIVERED", "CANCELLED"])
         .optional()
         .default("all"),
+    logisticsStatus: zod_1.z
+        .enum(["all", "NO_BL", "TO_PREPARE", "IN_PROGRESS", "PARTIAL", "DONE", "CANCELLED"])
+        .optional()
+        .default("all"),
+    hasRemaining: zod_1.z
+        .enum(["all", "yes", "no"])
+        .optional()
+        .default("all"),
+    nextAction: zod_1.z
+        .enum(["all", "CONFIRM", "PREPARE", "CREATE_BL", "DISPATCH", "DELIVER_REMAINDER", "CLOSE_ORDER"])
+        .optional()
+        .default("all"),
     warehouseId: zod_1.z.string().trim().min(1).optional(),
     clientId: zod_1.z.string().trim().min(1).optional(),
     q: zod_1.z.string().trim().max(200).optional(),
+    sortBy: zod_1.z
+        .enum(["createdAt", "status", "logisticsStatus", "deliveriesCount"])
+        .optional()
+        .default("createdAt"),
+    sortDir: zod_1.z.enum(["asc", "desc"]).optional().default("desc"),
     limit: zod_1.z.coerce.number().int().min(1).max(200).optional().default(50),
 });
 exports.orderLineInputSchema = zod_1.z.object({

@@ -1,3 +1,4 @@
+import "express-async-errors";
 import { createApp } from "./app";
 import { config } from "./config";
 import { logger } from "./lib/logger";

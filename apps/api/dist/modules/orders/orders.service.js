@@ -89,9 +89,61 @@ exports.ordersService = {
                 client: { select: { id: true, name: true } },
                 warehouse: { select: { id: true, code: true, name: true } },
                 invoice: { select: { id: true, number: true, status: true } },
+                lines: { select: { qty: true, qtyDelivered: true } },
+                deliveries: { select: { id: true, status: true } },
             },
         });
-        return { items };
+        const deliveryDoneStatuses = new Set(["DELIVERED", "CANCELLED"]);
+        const enriched = items.map((o) => {
+            const deliveriesCount = o.deliveries?.length ?? 0;
+            const remainingLinesCount = (o.lines ?? []).reduce((acc, l) => {
+                const ordered = Number(l.qty ?? 0);
+                const delivered = Number(l.qtyDelivered ?? 0);
+                return acc + (delivered < ordered ? 1 : 0);
+            }, 0);
+            const hasRemaining = remainingLinesCount > 0;
+            const anyOutForDelivery = (o.deliveries ?? []).some((d) => d.status === "OUT_FOR_DELIVERY");
+            const anyDelivered = (o.deliveries ?? []).some((d) => d.status === "DELIVERED");
+            const anyPartial = (o.deliveries ?? []).some((d) => d.status === "PARTIALLY_DELIVERED");
+            const allDeliveriesDone = deliveriesCount > 0 && (o.deliveries ?? []).every((d) => deliveryDoneStatuses.has(d.status));
+            // Logistics overview label (stable, derived)
+            let logisticsStatus = "TO_PREPARE";
+            if (o.status === "CANCELLED")
+                logisticsStatus = "CANCELLED";
+            else if (deliveriesCount === 0)
+                logisticsStatus = "NO_BL";
+            else if (!hasRemaining && allDeliveriesDone)
+                logisticsStatus = "DONE";
+            else if (anyOutForDelivery)
+                logisticsStatus = "IN_PROGRESS";
+            else if (hasRemaining && (anyDelivered || anyPartial))
+                logisticsStatus = "PARTIAL";
+            else
+                logisticsStatus = "TO_PREPARE";
+            // Next action hint for the list view
+            let nextAction = null;
+            if (o.status === "DRAFT")
+                nextAction = "CONFIRM";
+            else if (o.status === "CONFIRMED")
+                nextAction = "PREPARE";
+            else if (o.status === "PREPARED" && deliveriesCount === 0)
+                nextAction = "CREATE_BL";
+            else if (o.status === "PREPARED" && deliveriesCount > 0)
+                nextAction = "DISPATCH";
+            else if (o.status === "SHIPPED" && hasRemaining)
+                nextAction = "DELIVER_REMAINDER";
+            else if (o.status === "SHIPPED" && !hasRemaining && allDeliveriesDone)
+                nextAction = "CLOSE_ORDER";
+            return {
+                ...o,
+                deliveriesCount,
+                remainingLinesCount,
+                hasRemaining,
+                logisticsStatus,
+                nextAction,
+            };
+        });
+        return { items: enriched };
     },
     get: async (id) => {
         const item = await prisma_1.prisma.order.findUnique({

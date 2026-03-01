@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+require("express-async-errors");
 const app_1 = require("./app");
 const config_1 = require("./config");
 const logger_1 = require("./lib/logger");
