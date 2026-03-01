@@ -217,12 +217,12 @@ exports.inventoriesService = {
                 where: { warehouseId: inv.warehouseId, productId: { in: productIds } },
                 select: { productId: true, quantity: true },
             });
-            const currentMap = new Map(stockItems.map((s) => [s.productId, s.quantity]));
+            const currentMap = new Map(stockItems.map((s) => [s.productId, Number(s.quantity ?? 0)]));
             const movesToCreate = [];
             for (const l of counted) {
-                const currentQty = currentMap.get(l.productId) ?? 0;
-                const targetQty = Number(l.countedQty);
-                const qtyDelta = targetQty - currentQty;
+                const currentQty = Number(currentMap.get(l.productId) ?? 0);
+                const targetQty = Number(l.countedQty ?? 0);
+                const qtyDelta = Number(targetQty) - Number(currentQty);
                 if (qtyDelta === 0)
                     continue;
                 movesToCreate.push({

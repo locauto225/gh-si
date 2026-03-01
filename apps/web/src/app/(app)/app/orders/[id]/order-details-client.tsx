@@ -60,24 +60,27 @@ function getErrMsg(e: unknown) {
 
 // ─── Stepper horizontal compact ───────────────────────────────────────────────
 
-const STEPS: { key: OrderStatus; label: string }[] = [
-  { key: "DRAFT",     label: "Brouillon"  },
-  { key: "CONFIRMED", label: "Confirmée"  },
-  { key: "PREPARED",  label: "Préparée"   },
-  { key: "SHIPPED",   label: "Expédiée"   },
-  { key: "DELIVERED", label: "Livrée"     },
-];
+function getSteps(isDelivery: boolean): { key: OrderStatus; label: string }[] {
+  return [
+    { key: "DRAFT",     label: "Brouillon"                      },
+    { key: "CONFIRMED", label: "Confirmée"                      },
+    { key: "PREPARED",  label: "Préparée"                       },
+    { key: "SHIPPED",   label: isDelivery ? "Expédiée" : "Remise"  },
+    { key: "DELIVERED", label: isDelivery ? "Livrée"   : "Retirée" },
+  ];
+}
 
 const STEP_IDX: Record<string, number> = {
   DRAFT: 0, CONFIRMED: 1, PREPARED: 2, SHIPPED: 3, DELIVERED: 4, CANCELLED: -1,
 };
 
-function Stepper({ status }: { status: OrderStatus }) {
+function Stepper({ status, isDelivery }: { status: OrderStatus; isDelivery: boolean }) {
+  const steps = getSteps(isDelivery);
   const cur = STEP_IDX[status] ?? 0;
   if (status === "CANCELLED") return null;
   return (
     <div className="flex items-center gap-0 overflow-x-auto py-1">
-      {STEPS.map((s, i) => {
+      {steps.map((s, i) => {
         const done   = i < cur;
         const active = i === cur;
         const future = i > cur;
@@ -98,7 +101,7 @@ function Stepper({ status }: { status: OrderStatus }) {
                 {s.label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div className={`mx-2 h-px w-8 shrink-0 ${i < cur ? "bg-emerald-400" : "bg-border"}`} />
             )}
           </div>
@@ -120,6 +123,14 @@ function ActionBanner({ item, busy, onTransition }: ActionBannerProps) {
   const isDelivery  = item.fulfillment === "DELIVERY";
   const hasBLs      = (item.deliveries?.length ?? 0) > 0;
   const hasRemaining = item.lines.some(l => l.qty - (l.qtyDelivered ?? 0) > 0);
+  // Reliquat confirmé : au moins un BL clôturé (livré ou partiel) ET des qtés restantes
+  const hasConfirmedReliquat = hasRemaining && (item.deliveries?.some(d =>
+    d.status === "PARTIALLY_DELIVERED" || d.status === "DELIVERED"
+  ) ?? false);
+  // Tous les BLs terminés ET plus aucun reliquat → invite à clôturer la commande
+  const allBLsDone = isDelivery && hasBLs && !hasRemaining && (item.deliveries?.every(d =>
+    d.status === "DELIVERED" || d.status === "CANCELLED" || d.status === "FAILED"
+  ) ?? false);
 
   switch (item.status) {
 
@@ -199,27 +210,37 @@ function ActionBanner({ item, busy, onTransition }: ActionBannerProps) {
                 <div className="font-semibold text-sky-900 dark:text-sky-200">Prête — à expédier</div>
                 <div className="mt-0.5 text-sm text-sky-700 dark:text-sky-300">
                   {isDelivery
-                    ? "Créez un bon de livraison pour organiser le transport, puis marquez comme expédiée."
-                    : "Le client passe récupérer la commande. Marquez comme expédiée quand c'est fait."}
+                    ? hasBLs
+                      ? "Bon(s) de livraison créé(s). Vérifiez la préparation puis marquez comme expédiée."
+                      : "Un bon de livraison est requis avant de pouvoir expédier cette commande."
+                    : "Le client passe récupérer la commande. Marquez comme remise quand c'est fait."}
                 </div>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              {isDelivery && hasRemaining && (
-                <Link
-                  href={`/app/deliveries/new?mode=order&orderId=${item.id}`}
-                  className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:bg-transparent dark:text-sky-300"
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {isDelivery && hasRemaining && (
+                  <Link
+                    href={`/app/deliveries/new?mode=order&orderId=${item.id}`}
+                    className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:bg-transparent dark:text-sky-300"
+                  >
+                    + Créer un BL
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  disabled={busy || (isDelivery && !hasBLs)}
+                  onClick={() => onTransition("SHIPPED")}
+                  className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-sky-500"
                 >
-                  + Créer un BL
-                </Link>
+                  {busy ? "…" : isDelivery ? "Marquer expédiée →" : "Marquer comme remise →"}
+                </button>
+              </div>
+              {isDelivery && !hasBLs && (
+                <p className="text-xs text-sky-700 dark:text-sky-400">
+                  ⚠ Créez d'abord un bon de livraison pour débloquer l'expédition.
+                </p>
               )}
-              <button
-                type="button" disabled={busy}
-                onClick={() => onTransition("SHIPPED")}
-                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50 dark:bg-sky-500"
-              >
-                {busy ? "…" : "Marquer expédiée →"}
-              </button>
             </div>
           </div>
         </div>
@@ -227,26 +248,55 @@ function ActionBanner({ item, busy, onTransition }: ActionBannerProps) {
 
     case "SHIPPED":
       return (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+        <div className={`rounded-xl border p-4 ${
+          allBLsDone
+            ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+            : "border-primary/30 bg-primary/5"
+        }`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <Truck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              {allBLsDone
+                ? <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                : <Truck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              }
               <div>
-                <div className="font-semibold text-foreground">En transit</div>
-                <div className="mt-0.5 text-sm text-muted">
-                  {hasBLs
-                    ? `${item.deliveries!.length} bon${item.deliveries!.length > 1 ? "s" : ""} de livraison en cours.`
-                    : "Confirmez la réception par le client une fois la livraison effectuée."}
+                <div className={`font-semibold ${allBLsDone ? "text-emerald-900 dark:text-emerald-200" : "text-foreground"}`}>
+                  {allBLsDone
+                    ? "Tous les bons de livraison sont livrés ✓"
+                    : isDelivery ? "En transit" : "En attente de retrait"}
+                </div>
+                <div className={`mt-0.5 text-sm ${allBLsDone ? "text-emerald-700 dark:text-emerald-300" : "text-muted"}`}>
+                  {allBLsDone
+                    ? "Aucun reliquat restant. Confirmez la livraison pour clôturer la commande."
+                    : isDelivery
+                      ? hasBLs
+                        ? `${item.deliveries!.length} bon${item.deliveries!.length > 1 ? "s" : ""} de livraison en cours.`
+                        : "Confirmez la réception par le client une fois la livraison effectuée."
+                      : "Confirmez que le client a bien récupéré la commande."}
                 </div>
               </div>
             </div>
-            <button
-              type="button" disabled={busy}
-              onClick={() => onTransition("DELIVERED")}
-              className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? "…" : "Confirmer la livraison ✓"}
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {isDelivery && hasConfirmedReliquat && (
+                <Link
+                  href={`/app/deliveries/new?mode=order&orderId=${item.id}`}
+                  className="rounded-lg border border-primary/30 bg-card px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+                >
+                  + Créer un BL (reliquat)
+                </Link>
+              )}
+              <button
+                type="button" disabled={busy}
+                onClick={() => onTransition("DELIVERED")}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 ${
+                  allBLsDone
+                    ? "bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500"
+                    : "bg-primary"
+                }`}
+              >
+                {busy ? "…" : isDelivery ? "Confirmer la livraison ✓" : "Confirmer le retrait ✓"}
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -257,9 +307,9 @@ function ActionBanner({ item, busy, onTransition }: ActionBannerProps) {
           <div className="flex items-center gap-3">
             <CheckCircle className="h-5 w-5 shrink-0 text-emerald-500" />
             <div>
-              <div className="font-semibold text-emerald-900 dark:text-emerald-200">Commande livrée</div>
+              <div className="font-semibold text-emerald-900 dark:text-emerald-200">{isDelivery ? "Commande livrée" : "Commande retirée"}</div>
               <div className="mt-0.5 text-sm text-emerald-700 dark:text-emerald-300">
-                Livrée le {fmtDate(item.deliveredAt) ?? "—"}.
+                {isDelivery ? "Livrée le" : "Retirée le"} {fmtDate(item.deliveredAt) ?? "—"}.
                 {item.invoice?.id && (
                   <> · <Link href={`/app/invoices/${item.invoice.id}`} className="underline underline-offset-4 hover:opacity-80">Voir la facture</Link></>
                 )}
@@ -406,7 +456,7 @@ export default function OrderDetailsClient({ id }: { id: string }) {
 
         {/* Stepper */}
         <div className="border-b border-border px-4 py-3">
-          <Stepper status={item.status} />
+          <Stepper status={item.status} isDelivery={item.fulfillment === "DELIVERY"} />
         </div>
 
         {/* Résumé financier */}
@@ -530,15 +580,6 @@ export default function OrderDetailsClient({ id }: { id: string }) {
               </Link>
             ))}
           </div>
-          {isDelivery && item.lines.some(l => l.qty - (l.qtyDelivered ?? 0) > 0)
-            && item.status !== "DELIVERED" && item.status !== "CANCELLED" && (
-            <div className="border-t border-border px-4 py-3">
-              <Link href={`/app/deliveries/new?mode=order&orderId=${item.id}`}
-                className="text-sm text-primary underline underline-offset-4 hover:opacity-80">
-                + Ajouter un bon de livraison (reliquat)
-              </Link>
-            </div>
-          )}
         </div>
       )}
 

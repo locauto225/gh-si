@@ -889,14 +889,14 @@ exports.stockService = {
                     where: { warehouseId: transitWarehouseId, productId: { in: transitProductIds } },
                     select: { productId: true, quantity: true },
                 });
-                const transitMap = new Map(transitItems.map((s) => [s.productId, s.quantity]));
+                const transitMap = new Map(transitItems.map((s) => [s.productId, Number(s.quantity ?? 0)]));
                 // Vérifier stock transit suffisant
                 for (const l of inputLines) {
                     const pid = String(l.productId).trim();
                     const qtyReceived = Number(l.qtyReceived);
                     if (!qtyReceived)
                         continue;
-                    const available = transitMap.get(pid) ?? 0;
+                    const available = Number(transitMap.get(pid) ?? 0);
                     if (available - qtyReceived < 0) {
                         throw (0, errors_1.insufficientStockError)({ available, requested: qtyReceived });
                     }
@@ -907,7 +907,7 @@ exports.stockService = {
                     const qtyReceived = Number(l.qtyReceived);
                     if (!qtyReceived)
                         continue;
-                    const current = transitMap.get(pid) ?? 0;
+                    const current = Number(transitMap.get(pid) ?? 0);
                     const next = current - qtyReceived;
                     transitMap.set(pid, next);
                     await tx.stockItem.upsert({
@@ -939,14 +939,14 @@ exports.stockService = {
                 where: { warehouseId: destWarehouseId, productId: { in: productIds } },
                 select: { productId: true, quantity: true },
             });
-            const destMap = new Map(destItems.map((s) => [s.productId, s.quantity]));
+            const destMap = new Map(destItems.map((s) => [s.productId, Number(s.quantity ?? 0)]));
             // Apply destination increments + moves + line updates
             for (const l of inputLines) {
                 const pid = String(l.productId).trim();
                 const qtyReceived = Number(l.qtyReceived);
                 if (!qtyReceived)
                     continue; // allow 0 lines
-                const current = destMap.get(pid) ?? 0;
+                const current = Number(destMap.get(pid) ?? 0);
                 const next = current + qtyReceived;
                 destMap.set(pid, next);
                 await tx.stockItem.upsert({

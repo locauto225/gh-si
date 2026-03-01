@@ -286,7 +286,13 @@ function StopView({
   const balance   = totalDue - totalPaid;
   const allQtysOk = allLines.every((l) => (draft.qtys[l.id] ?? 0) >= (l.saleLine?.qty ?? 0));
 
-  const canSubmit = !busy && draft.outcome !== null;
+  // Paiement requis si arrêt livré (DONE ou PARTIAL) avec montant dû > 0.
+  // Exception : "Crédit client" est un paiement différé légitime (montant 0 accepté).
+  const hasCredit = draft.payments.some((p) => p.mode === "CREDIT");
+  const paymentRequired = totalDue > 0 && (draft.outcome === "DONE" || draft.outcome === "PARTIAL");
+  const paymentOk = !paymentRequired || totalPaid > 0 || hasCredit;
+
+  const canSubmit = !busy && draft.outcome !== null && paymentOk;
 
   async function submit() {
     if (!canSubmit) return;
@@ -559,6 +565,11 @@ function StopView({
           </button>
           {!draft.outcome && (
             <p className="mt-2 text-center text-xs text-muted">Sélectionnez un résultat avant de valider.</p>
+          )}
+          {draft.outcome !== null && !paymentOk && (
+            <p className="mt-2 text-center text-xs text-amber-600 dark:text-amber-400">
+              ⚠ Renseignez un montant perçu ou sélectionnez "Crédit client" pour valider.
+            </p>
           )}
         </div>
       )}

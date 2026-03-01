@@ -19,6 +19,7 @@ type OrderListRow = {
   id: string;
   number: string;
   status: string;
+  fulfillment?: "PICKUP" | "DELIVERY" | null;
 
   warehouse?: { id: string; code: string; name: string } | null;
   client?: Client | null;
@@ -57,8 +58,15 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Annulée",
 };
 
-function StatusBadge({ status }: { status: string }) {
+const STATUS_LABELS_PICKUP: Record<string, string> = {
+  ...STATUS_LABELS,
+  SHIPPED: "Remise",
+  DELIVERED: "Retirée",
+};
+
+function StatusBadge({ status, fulfillment }: { status: string; fulfillment?: "PICKUP" | "DELIVERY" | null }) {
   const s = status.toUpperCase();
+  const labels = fulfillment === "PICKUP" ? STATUS_LABELS_PICKUP : STATUS_LABELS;
   const cls =
     s === "DELIVERED"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
@@ -74,7 +82,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {STATUS_LABELS[s] ?? s}
+      {labels[s] ?? s}
     </span>
   );
 }
@@ -162,8 +170,8 @@ export default function OrdersClient() {
               <option value="DRAFT">Brouillons</option>
               <option value="CONFIRMED">Confirmées</option>
               <option value="PREPARED">Préparées</option>
-              <option value="SHIPPED">Expédiées</option>
-              <option value="DELIVERED">Livrées</option>
+              <option value="SHIPPED">Expédiées / Remises</option>
+              <option value="DELIVERED">Livrées / Retirées</option>
               <option value="CANCELLED">Annulées</option>
             </select>
           </div>
@@ -237,7 +245,7 @@ export default function OrdersClient() {
                       <td className="px-4 py-3">{o.client?.name ?? <span className="text-muted">—</span>}</td>
                       <td className="px-4 py-3 text-xs text-muted">{origin}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={o.status} />
+                        <StatusBadge status={o.status} fulfillment={o.fulfillment} />
                       </td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">
                         {formatXOF(o.totalTTC ?? o.totalHT ?? 0)}

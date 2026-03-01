@@ -21,10 +21,16 @@ type DeliveryEvent = {
 
 type DeliveryLine = {
   id: string; qtyDelivered: number; note?: string | null;
-  saleLine: {
+  // Livraison depuis une vente
+  saleLine?: {
     id: string; qty: number; qtyDelivered: number;
     product: { id: string; sku: string; name: string; unit: string };
-  };
+  } | null;
+  // Livraison depuis une commande B2B
+  orderLine?: {
+    id: string; qty: number; qtyDelivered?: number;
+    product: { id: string; sku: string; name: string; unit: string };
+  } | null;
 };
 
 type Delivery = {
@@ -673,7 +679,11 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
         <div className="flex items-center justify-between border-b border-border bg-[color-mix(in_oklab,var(--card),var(--background)_35%)] px-4 py-3 rounded-t-xl">
           <div className="text-sm font-semibold text-foreground">Lignes</div>
           <div className="text-xs text-muted">
-            {item.sale ? "Livraison vente — quantités cumulées" : "Livraison interne"}
+            {item.sale
+              ? "Livraison vente — quantités cumulées"
+              : item.order
+              ? "Livraison commande B2B"
+              : "Livraison interne"}
           </div>
         </div>
 
@@ -694,16 +704,20 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
               </thead>
               <tbody>
                 {item.lines.map((l) => {
-                  const remaining = l.saleLine.qty - l.saleLine.qtyDelivered;
+                  // Résout la ligne source : vente ou commande B2B
+                  const ref = l.saleLine ?? l.orderLine ?? null;
+                  if (!ref) return null;
+                  const totalDelivered = ref.qtyDelivered ?? 0;
+                  const remaining = ref.qty - totalDelivered;
                   return (
                     <tr key={l.id} className="border-t border-border odd:bg-[color-mix(in_oklab,var(--card),var(--background)_12%)] hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)]">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{l.saleLine.product.name}</div>
-                        <div className="text-xs text-muted">{l.saleLine.product.sku} · {l.saleLine.product.unit}</div>
+                        <div className="font-medium">{ref.product.name}</div>
+                        <div className="text-xs text-muted">{ref.product.sku} · {ref.product.unit}</div>
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{l.saleLine.qty}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{ref.qty}</td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        {l.saleLine.qtyDelivered}
+                        {totalDelivered}
                         {remaining > 0 && (
                           <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">({remaining} restant)</span>
                         )}
