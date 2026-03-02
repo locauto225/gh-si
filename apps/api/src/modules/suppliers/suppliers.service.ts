@@ -39,6 +39,37 @@ export const suppliersService = {
     });
   },
 
+  listLite: async (q: SuppliersListQuery) => {
+    const whereBase = { deletedAt: null };
+
+    const whereStatus =
+      q.status === "all"
+        ? {}
+        : q.status === "active"
+          ? { isActive: true }
+          : { isActive: false };
+
+    const items = await prisma.supplier.findMany({
+      where: {
+        ...whereBase,
+        ...whereStatus,
+        ...(q.q
+          ? {
+              nameSearch: { contains: q.q.trim().toLowerCase() },
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+      take: q.limit,
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return items;
+  },
+
   get: async (id: string) => {
     const item = await prisma.supplier.findUnique({ where: { id } });
     if (!item || item.deletedAt) {

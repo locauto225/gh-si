@@ -12,9 +12,19 @@ function slugify(input: string) {
 }
 
 export const categoriesService = {
-  list: async () => {
+  list: async (options?: { includeSubcategories?: boolean }) => {
+    const includeSubcategories = Boolean(options?.includeSubcategories);
+
     return prisma.category.findMany({
       where: { isActive: true },
+      orderBy: { name: "asc" },
+      ...(includeSubcategories ? { include: { subcategories: true } } : {}),
+    });
+  },
+
+  listSubcategories: async (categoryId: string) => {
+    return prisma.subCategory.findMany({
+      where: { categoryId },
       orderBy: { name: "asc" },
     });
   },

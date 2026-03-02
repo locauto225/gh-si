@@ -5,8 +5,15 @@ import { categoriesService } from "./categories.service";
 
 export const categoriesRouter = Router();
 
-categoriesRouter.get("/", async (_req, res) => {
-  const items = await categoriesService.list();
+categoriesRouter.get("/", async (req, res) => {
+  const includeSubcategories = String(req.query.includeSubcategories ?? "").toLowerCase() === "true";
+  const items = await categoriesService.list({ includeSubcategories });
+  res.json({ items });
+});
+
+categoriesRouter.get("/:id/subcategories", async (req, res) => {
+  const categoryId = String(req.params.id);
+  const items = await categoriesService.listSubcategories(categoryId);
   res.json({ items });
 });
 

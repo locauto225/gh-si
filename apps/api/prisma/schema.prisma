@@ -82,6 +82,7 @@ model Category {
   updatedAt DateTime @updatedAt
 
   products Product[]
+  subcategories SubCategory[]
   stockInventories StockInventory[]
 
   @@index([isActive])
@@ -95,6 +96,8 @@ model SubCategory {
   id        String    @id @default(cuid())
   name      String
   slug      String    @unique
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
   isActive  Boolean   @default(true)
   deletedAt DateTime?
 
@@ -107,6 +110,7 @@ model SubCategory {
   @@index([deletedAt])
   @@index([isActive, deletedAt])
   @@index([slug])
+  @@index([categoryId])
 }
 
 // Join table: un produit peut avoir plusieurs sous-catégories

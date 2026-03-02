@@ -22,6 +22,18 @@ suppliersRouter.get("/", async (req, res) => {
   res.json({ items });
 });
 
+suppliersRouter.get("/list", async (req, res) => {
+  // Liste légère pour UI (autocomplete / selects)
+  const q = validate(suppliersListQuerySchema, {
+    status: req.query.status ?? "active",
+    q: req.query.q,
+    limit: req.query.limit ?? 200,
+  });
+
+  const items = await suppliersService.listLite(q);
+  res.json({ items: items ?? [] });
+});
+
 suppliersRouter.get("/:id", async (req, res) => {
   const p = validate(z.object({ id: z.string().min(1) }), { id: req.params.id });
   const item = await suppliersService.get(p.id);
