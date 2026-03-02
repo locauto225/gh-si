@@ -90,6 +90,151 @@ model Category {
   @@index([slug])
 }
 
+
+model SubCategory {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ProductSubCategory[]
+
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@index([slug])
+}
+
+// Join table: un produit peut avoir plusieurs sous-catégories
+model ProductSubCategory {
+  id String @id @default(cuid())
+
+  productId     String
+  subCategoryId String
+
+  product     Product     @relation(fields: [productId], references: [id])
+  subCategory SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, subCategoryId])
+  @@index([productId])
+  @@index([subCategoryId])
+  @@index([createdAt])
+}
+
+// Plusieurs codes-barres par produit (EAN unité/carton/pack...)
+model ProductBarcode {
+  id String @id @default(cuid())
+
+  productId String
+  code      String @unique
+
+  // Optionnel: type/label (ex: UNIT, CARTON, PACK)
+  label String?
+
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// Conditionnements / colisages (multi-niveaux). Base = unité.
+model ProductPackaging {
+  id String @id @default(cuid())
+
+  productId String
+
+  // Nom lisible (Unité, Carton, Pack...)
+  name String
+
+  // Quantité en unités de base (Carton=5, Pack=50 ...)
+  units Int
+
+  // Optionnel: code-barres spécifique à ce conditionnement
+  barcode String? @unique
+
+  product Product @relation(fields: [productId], references: [id])
+
+  // Opposite relations
+  supplierProducts   SupplierProduct[]
+  purchasePrices     ProductPurchasePrice[]
+  purchaseOrderLines PurchaseOrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// Référencement produit ↔ fournisseur (multi-fournisseurs)
+model SupplierProduct {
+  id String @id @default(cuid())
+
+  supplierId String
+  productId  String
+
+  // Code fournisseur (leur référence interne)
+  supplierSku String?
+
+  // Conditionnement préféré proposé par ce fournisseur
+  packagingId String?
+  packaging   ProductPackaging? @relation(fields: [packagingId], references: [id])
+
+  // Prix courant proposé (référence)
+  lastUnitPrice Int? // FCFA (XOF)
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([supplierId, productId])
+  @@index([supplierId])
+  @@index([productId])
+  @@index([packagingId])
+  @@index([createdAt])
+}
+
+// Historique prix d'achat (par produit, et optionnellement par fournisseur/conditionnement)
+model ProductPurchasePrice {
+  id String @id @default(cuid())
+
+  productId  String
+  supplierId String?
+  packagingId String?
+
+  // Prix unitaire en unité de base (ou selon packaging si tu l'utilises)
+  unitPrice Int // FCFA (XOF)
+
+  // Date d'effet (ou date de constat)
+  effectiveAt DateTime @default(now())
+
+  note String?
+
+  product   Product   @relation(fields: [productId], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  packaging ProductPackaging? @relation(fields: [packagingId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([supplierId])
+  @@index([packagingId])
+  @@index([effectiveAt])
+  @@index([createdAt])
+}
+
 model Product {
   id        String    @id @default(cuid())
   sku       String    @unique
@@ -100,12 +245,32 @@ model Product {
   isActive  Boolean   @default(true)
   deletedAt DateTime?
 
+  // ✅ Achat (prix de référence, peut évoluer)
+  purchasePrice Int @default(0) // FCFA (XOF) - entier
+
   // ✅ Boissons (optionnels)
   brand    String?
+
+  // ⚠️ Legacy: ancien code-barres unique (on garde pour compat/migration)
   // Note SQLite: une contrainte UNIQUE autorise plusieurs NULL.
   // Donc plusieurs produits peuvent ne pas avoir de code-barres, mais dès qu'il est renseigné il doit être unique.
   barcode  String? @unique
+
+  // ⚠️ Legacy: ancien packSize (on migre vers ProductPackaging)
   packSize Int? // ex: 24 (bouteilles/caisse)
+
+  // ✅ Nouveaux besoins: plusieurs codes-barres + plusieurs conditionnements
+  barcodes   ProductBarcode[]
+  packagings ProductPackaging[]
+
+  // ✅ Catégorisation: plusieurs sous-catégories
+  subCategories ProductSubCategory[]
+
+  // ✅ Produits multi-fournisseurs
+  suppliers SupplierProduct[]
+
+  // ✅ Historique du prix d'achat
+  purchasePrices ProductPurchasePrice[]
 
   // ✅ FNE / Facturation (snapshots & taxes)
   description String?
@@ -264,6 +429,8 @@ model Supplier {
   deletedAt DateTime?
 
   purchaseOrders PurchaseOrder[]
+  supplierProducts SupplierProduct[]
+  purchasePrices   ProductPurchasePrice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -692,8 +859,22 @@ model PurchaseOrderLine {
   purchaseOrderId String
   productId       String
 
+  // ✅ Bon de commande = proposition (demandé) + contre-proposition/confirmation (confirmé)
+  // V1 compat: on garde qtyOrdered/unitPrice, mais on ajoute les champs demandés/confirmés.
   qtyOrdered Int
   unitPrice  Int @default(0) // FCFA (XOF)
+
+  // Demandé (client)
+  qtyRequested      Int? // si null => utiliser qtyOrdered
+  unitPriceRequested Int? // si null => utiliser unitPrice
+
+  // Confirmé (fournisseur)
+  qtyConfirmed      Int?
+  unitPriceConfirmed Int?
+
+  // Conditionnement choisi sur la ligne (unité/carton/pack...)
+  packagingId String?
+  packaging   ProductPackaging? @relation(fields: [packagingId], references: [id])
 
   // V1: suivi réception (peut rester simple)
   qtyReceived Int @default(0)
@@ -708,6 +889,7 @@ model PurchaseOrderLine {
   @@index([purchaseOrderId])
   @@index([productId])
   @@index([createdAt])
+  @@index([packagingId])
 }
 
 // ✅ Commande dépôt (B2B) — module Orders (Option B)

@@ -1,27 +1,20 @@
 import { Router } from "express";
 import { validate } from "../../lib/validate";
 import { AppError, ERROR_CODES } from "../../lib/errors";
-import { productCreateSchema, productUpdateSchema } from "./products.schemas";
+import { productCreateSchema, productListQuerySchema, productUpdateSchema } from "./products.schemas";
 import { z } from "zod";
 import { productsService } from "./products.service";
 
 export const productsRouter = Router();
 
 productsRouter.get("/", async (req, res) => {
-  const querySchema = z.object({
-    status: z.string().optional(),
-    q: z.string().optional(),
-    categoryId: z.string().optional(),
-    limit: z.coerce.number().int().min(1).max(500).optional(),
-  });
-
-  const q = validate(querySchema, req.query);
+  const q = validate(productListQuerySchema, req.query);
 
   const statusRaw = q.status ?? "active";
   const status =
     statusRaw === "all" || statusRaw === "inactive" || statusRaw === "active" ? statusRaw : "active";
 
-  const items = await (productsService as any).list({
+  const items = await productsService.list({
     status,
     q: q.q?.trim() ? q.q.trim() : undefined,
     categoryId: q.categoryId?.trim() ? q.categoryId.trim() : undefined,
