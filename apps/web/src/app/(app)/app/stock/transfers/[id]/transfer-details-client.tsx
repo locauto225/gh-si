@@ -60,14 +60,14 @@ function fmtDate(dt: string | null | undefined) {
 function StatusBadge({ status }: { status: string }) {
   const s = String(status || "").toUpperCase();
   const tone =
-    s === "DRAFT" ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100"
-    : s === "SHIPPED" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-    : s === "PARTIALLY_RECEIVED" ? "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
-    : s === "RECEIVED" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-    : s === "CANCELLED" ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200"
-    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-100";
+    s === "DRAFT" ? "border-border bg-card text-muted"
+    : s === "SHIPPED" ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300"
+    : s === "PARTIALLY_RECEIVED" ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300"
+    : s === "RECEIVED" ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+    : s === "CANCELLED" ? "border-red-200 bg-red-50 text-red-600 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
+    : "border-border bg-card text-muted";
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>
       {STATUS_LABELS[s] ?? s}
     </span>
   );
@@ -176,7 +176,7 @@ export function TransferDetailsClient({ id }: { id: string }) {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Chargement…</div>
+      <div className="p-8 text-center text-sm text-muted">Chargement…</div>
     );
   }
 
@@ -190,7 +190,7 @@ export function TransferDetailsClient({ id }: { id: string }) {
 
   if (!item) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+      <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted">
         Transfert introuvable.
       </div>
     );
@@ -205,22 +205,22 @@ export function TransferDetailsClient({ id }: { id: string }) {
       {/* ============================================================
           Header
       ============================================================ */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {/* ✅ Référence courte — pas l'UUID complet */}
-            <span className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <span className="font-mono text-sm font-semibold text-foreground">
               Transfert {String(id).slice(0, 8)}
             </span>
             <StatusBadge status={item.status} />
-            <span className="text-xs text-slate-400 dark:text-slate-500">créé le {fmtDate(item.createdAt)}</span>
+            <span className="text-xs text-muted">créé le {fmtDate(item.createdAt)}</span>
           </div>
 
           <button
             type="button"
             disabled={actionBusy}
             onClick={load}
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
+            className="inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-muted hover:text-foreground hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] disabled:opacity-50 transition-colors"
           >
             Rafraîchir
           </button>
@@ -228,25 +228,25 @@ export function TransferDetailsClient({ id }: { id: string }) {
 
         {/* Trajet source → destination */}
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/20">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Source</div>
-            <div className="mt-0.5 text-sm font-medium text-slate-900 dark:text-slate-100">
+          <div className="rounded-lg border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] px-3 py-2">
+            <div className="text-xs text-muted">Source</div>
+            <div className="mt-0.5 text-sm font-medium text-foreground">
               {item.fromWarehouse?.name}
-              <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">({item.fromWarehouse?.code})</span>
+              <span className="ml-1 text-xs font-normal text-muted">({item.fromWarehouse?.code})</span>
             </div>
             {/* ✅ Type traduit */}
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-xs text-muted">
               {KIND_LABELS[item.fromWarehouse?.kind] ?? item.fromWarehouse?.kind}
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/20">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Destination</div>
-            <div className="mt-0.5 text-sm font-medium text-slate-900 dark:text-slate-100">
+          <div className="rounded-lg border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] px-3 py-2">
+            <div className="text-xs text-muted">Destination</div>
+            <div className="mt-0.5 text-sm font-medium text-foreground">
               {item.toWarehouse?.name}
-              <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">({item.toWarehouse?.code})</span>
+              <span className="ml-1 text-xs font-normal text-muted">({item.toWarehouse?.code})</span>
             </div>
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-xs text-muted">
               {KIND_LABELS[item.toWarehouse?.kind] ?? item.toWarehouse?.kind}
             </div>
           </div>
@@ -255,20 +255,20 @@ export function TransferDetailsClient({ id }: { id: string }) {
         {/* Dates et quantités — ✅ séparation claire "Réceptionné le" vs "Qté réceptionnée" */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Expédié le</div>
-            <div className="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{fmtDate(item.shippedAt)}</div>
+            <div className="text-xs text-muted">Expédié le</div>
+            <div className="mt-0.5 text-sm text-foreground">{fmtDate(item.shippedAt)}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Réceptionné le</div>
-            <div className="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{fmtDate(item.receivedAt)}</div>
+            <div className="text-xs text-muted">Réceptionné le</div>
+            <div className="mt-0.5 text-sm text-foreground">{fmtDate(item.receivedAt)}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Qté envoyée</div>
-            <div className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">{totals.qty}</div>
+            <div className="text-xs text-muted">Qté envoyée</div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{totals.qty}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Qté réceptionnée</div>
-            <div className={`mt-0.5 text-sm font-semibold tabular-nums ${totals.delta < 0 ? "text-amber-700 dark:text-amber-300" : totals.delta > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-900 dark:text-slate-100"}`}>
+            <div className="text-xs text-muted">Qté réceptionnée</div>
+            <div className={`mt-0.5 text-sm font-semibold tabular-nums ${totals.delta < 0 ? "text-amber-700 dark:text-amber-300" : totals.delta > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
               {totals.received}
               {totals.delta !== 0 && (
                 <span className="ml-1 text-xs font-normal">
@@ -281,8 +281,8 @@ export function TransferDetailsClient({ id }: { id: string }) {
 
         {item.note && (
           <div className="mt-4">
-            <div className="text-xs text-slate-500 dark:text-slate-400">Motif</div>
-            <div className="mt-0.5 break-words text-sm text-slate-900 dark:text-slate-100">{item.note}</div>
+            <div className="text-xs text-muted">Motif</div>
+            <div className="mt-0.5 break-words text-sm text-foreground">{item.note}</div>
           </div>
         )}
       </div>
@@ -291,33 +291,41 @@ export function TransferDetailsClient({ id }: { id: string }) {
       {(deliveryId || item.journeyId) && (
         <div className="grid gap-3 lg:grid-cols-2">
           {deliveryId && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Bon de livraison lié</div>
-              <div className="mt-0.5 text-sm font-medium text-slate-900 dark:text-slate-100">
-                {deliveryNumber ? `BL ${deliveryNumber}` : "Bon de livraison"}
+            <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs text-muted">Bon de livraison lié</div>
+                {/* Le statut du BL est géré côté BL — on invite à l'ouvrir */}
               </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">
+                  {deliveryNumber ? `BL ${deliveryNumber}` : "Bon de livraison"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                Expédier ou réceptionner depuis la fiche BL synchronise automatiquement ce transfert.
+              </p>
               <Link
                 href={`/app/deliveries/${deliveryId}`}
-                className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
               >
-                Ouvrir le BL →
+                Ouvrir la fiche BL →
               </Link>
             </div>
           )}
 
           {item.journeyId && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-              <div className="text-xs text-slate-500 dark:text-slate-400">Trajet multi-étapes</div>
-              <div className="mt-0.5 font-mono text-xs text-slate-700 dark:text-slate-200 break-all">{item.journeyId}</div>
+            <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+              <div className="text-xs text-muted">Trajet multi-étapes</div>
+              <div className="mt-0.5 font-mono text-xs text-foreground break-all">{item.journeyId}</div>
               {journeyPeerId ? (
                 <Link
                   href={`/app/stock/transfers/${journeyPeerId}`}
-                  className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
+                  className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] transition-colors"
                 >
                   Voir l'autre étape →
                 </Link>
               ) : (
-                <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">Autre étape non disponible</div>
+                <div className="mt-2 text-xs text-muted">Autre étape non disponible</div>
               )}
             </div>
           )}
@@ -340,9 +348,9 @@ export function TransferDetailsClient({ id }: { id: string }) {
           Action — Expédier
       ============================================================ */}
       {canShip && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-          <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Expédier ce transfert</div>
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="text-sm font-semibold text-foreground">Expédier ce transfert</div>
+          <div className="mt-1 text-xs text-muted">
             Confirme l'envoi des produits. La destination pourra ensuite enregistrer la réception.
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -350,13 +358,13 @@ export function TransferDetailsClient({ id }: { id: string }) {
               value={shipNote}
               onChange={(e) => setShipNote(e.target.value)}
               placeholder="Note d'expédition (optionnel)"
-              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:focus:ring-slate-800"
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
             />
             <button
               type="button"
               disabled={actionBusy}
               onClick={onShip}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity"
             >
               {actionBusy ? "Expédition…" : "Marquer comme expédié"}
             </button>
@@ -399,14 +407,14 @@ export function TransferDetailsClient({ id }: { id: string }) {
           : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100";
         const chipBase = "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium";
         const chip = isLoss
-          ? `${chipBase} border-amber-300/60 bg-white/60 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100`
-          : `${chipBase} border-emerald-300/60 bg-white/60 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100`;
+          ? `${chipBase} border-amber-300/60 bg-card/60 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100`
+          : `${chipBase} border-emerald-300/60 bg-card/60 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100`;
 
         return (
           <div className={`rounded-xl border px-4 py-3 ${cls}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/60 dark:bg-black/20">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-card/60 dark:bg-black/20">
                   <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
                     <path d="M12 9v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -428,7 +436,7 @@ export function TransferDetailsClient({ id }: { id: string }) {
                   const el = document.getElementById("transfer-lines") ?? document.getElementById("transfer-receive");
                   el?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] transition-colors"
               >
                 Voir les lignes
               </button>
@@ -443,9 +451,9 @@ export function TransferDetailsClient({ id }: { id: string }) {
       {!canReceive && (
         <div
           id="transfer-lines"
-          className="rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800"
+          className="rounded-xl border border-border bg-card shadow-sm"
         >
-          <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/20">
+          <div className="border-b border-border bg-[color-mix(in_oklab,var(--card),var(--background)_20%)] px-4 py-3">
             <div className="text-sm font-medium">
               Lignes ({item.lines?.length ?? 0})
             </div>
@@ -455,8 +463,8 @@ export function TransferDetailsClient({ id }: { id: string }) {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-900 dark:text-slate-100">
-              <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+            <table className="w-full text-left text-sm text-foreground">
+              <thead className="bg-[color-mix(in_oklab,var(--card),var(--background)_20%)] text-xs text-muted">
                 <tr>
                   <th className="px-4 py-3">Produit</th>
                   <th className="px-4 py-3 text-right">Envoyé</th>
@@ -472,15 +480,15 @@ export function TransferDetailsClient({ id }: { id: string }) {
                     const rec = Number(l.qtyReceived) || 0;
                     const diff = rec - sent;
                     const diffClass =
-                      diff === 0 ? "text-slate-600 dark:text-slate-300"
+                      diff === 0 ? "text-muted"
                       : diff < 0 ? "text-amber-700 dark:text-amber-200"
                       : "text-emerald-700 dark:text-emerald-200";
 
                     return (
-                      <tr key={l.id} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-950/30">
+                      <tr key={l.id} className="border-t border-border hover:bg-[color-mix(in_oklab,var(--card),var(--background)_25%)] transition-colors">
                         <td className="px-4 py-3">
                           <div className="font-medium">{l.product?.name ?? "—"}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs text-muted">
                             {l.product?.sku ? `SKU : ${l.product.sku}` : ""}
                             {l.product?.unit ? ` · ${l.product.unit}` : ""}
                           </div>
@@ -490,13 +498,13 @@ export function TransferDetailsClient({ id }: { id: string }) {
                         <td className={`px-4 py-3 text-right font-medium tabular-nums ${diffClass}`}>
                           {diff === 0 ? "0" : diff > 0 ? `+${diff}` : String(diff)}
                         </td>
-                        <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{l.note ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted">{l.note ?? "—"}</td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">Aucune ligne.</td>
+                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted">Aucune ligne.</td>
                   </tr>
                 )}
               </tbody>

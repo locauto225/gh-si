@@ -9,13 +9,7 @@ const zod_1 = require("zod");
 const products_service_1 = require("./products.service");
 exports.productsRouter = (0, express_1.Router)();
 exports.productsRouter.get("/", async (req, res) => {
-    const querySchema = zod_1.z.object({
-        status: zod_1.z.string().optional(),
-        q: zod_1.z.string().optional(),
-        categoryId: zod_1.z.string().optional(),
-        limit: zod_1.z.coerce.number().int().min(1).max(500).optional(),
-    });
-    const q = (0, validate_1.validate)(querySchema, req.query);
+    const q = (0, validate_1.validate)(products_schemas_1.productListQuerySchema, req.query);
     const statusRaw = q.status ?? "active";
     const status = statusRaw === "all" || statusRaw === "inactive" || statusRaw === "active" ? statusRaw : "active";
     const items = await products_service_1.productsService.list({

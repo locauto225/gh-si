@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import NewDeliveryClient from "./new-delivery-client";
+
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string; saleId?: string; orderId?: string }>;
+  searchParams: Promise<{ mode?: string; saleId?: string; orderId?: string; from?: string; to?: string }>;
 }) {
-  const { mode: rawMode, saleId, orderId } = await searchParams;
+  const { mode: rawMode, saleId, orderId, from, to } = await searchParams;
 
   const mode = (rawMode ?? "sale").toLowerCase();
 
@@ -19,6 +20,8 @@ export default async function Page({
       mode={mode as "sale" | "order" | "internal"}
       saleId={saleId?.trim() || undefined}
       orderId={orderId?.trim() || undefined}
+      fromWarehouseId={from?.trim() || undefined}
+      toWarehouseId={to?.trim() || undefined}
     />
   );
 }

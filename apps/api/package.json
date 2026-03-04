@@ -4,8 +4,9 @@
   "main": "dist/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
     "dev:watch": "tsx watch src/server.ts",
+    "dev:dist": "node dist/server.js",
     "build": "prisma generate && tsc -p tsconfig.json",
     "postinstall": "prisma generate",
     "start": "prisma db push --force-reset && node dist/server.js",

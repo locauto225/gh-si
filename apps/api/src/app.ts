@@ -24,6 +24,7 @@ import { fneRouter } from "./modules/fne/fne.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { storesRouter } from "./modules/stores/stores.routes";
 import { pricelistsRouter } from "./modules/pricelists/pricelists.routes";
+import { uploadsRouter } from "./modules/uploads/uploads.routes";
 import { errorHandler, notFound } from "./lib/errors";
 
 export function createApp() {
@@ -84,6 +85,7 @@ export function createApp() {
   app.use("/stop-payments", stopPaymentsRouter);
   app.use("/fne", fneRouter);
   app.use("/dashboard", dashboardRouter);
+  app.use("/uploads", uploadsRouter);
 
   app.use(notFound);
   app.use(errorHandler);

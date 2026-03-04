@@ -127,6 +127,7 @@ export function StockTransfersNewClient() {
   const [note, setNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ id: string; fromWarehouseId: string; toWarehouseId: string } | null>(null);
 
   const lineQtyInt = useMemo(() => {
     const n = Number(String(lineQty).replace(/\s/g, "").replace(/,/g, "."));
@@ -295,29 +296,82 @@ export function StockTransfersNewClient() {
         lines: lines.map((l) => ({ productId: l.productId, qty: l.qty, note: l.note ?? null })),
       });
 
-      // ✅ Redirection vers le détail du transfert créé
-      router.push(`/app/stock/transfers/${res.item.id}`);
+      // Affiche l'état de succès avec suggestion de créer un BL
+      setCreated({ id: res.item.id, fromWarehouseId, toWarehouseId });
     } catch (e: unknown) {
       setErr(formatStockError(e));
       setSaving(false);
     }
   }
 
+  // ── État de succès ──────────────────────────────────────────────────────────
+  if (created) {
+    const blUrl = `/app/deliveries/new?mode=internal&from=${created.fromWarehouseId}&to=${created.toWarehouseId}`;
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 shadow-sm text-center space-y-5">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <svg className="h-7 w-7 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div>
+          <div className="text-base font-semibold text-foreground">Transfert de stock créé</div>
+          <div className="mt-1 text-sm text-muted">
+            Le mouvement de stock est enregistré et en attente de confirmation par la destination.
+          </div>
+        </div>
+
+        {/* Suggestion BL */}
+        <div className="mx-auto max-w-md rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-900/40 dark:bg-amber-950/20 text-left">
+          <div className="flex gap-3">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            <div>
+              <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                Un chauffeur transporte la marchandise ?
+              </div>
+              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
+                Créez le bon de livraison réassort pour lui remettre un document de transport.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
+          <Link
+            href={blUrl}
+            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Créer le bon de livraison →
+          </Link>
+          <Link
+            href={`/app/stock/transfers/${created.id}`}
+            className="rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] transition-colors"
+          >
+            Voir le transfert
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <form
         onSubmit={onCreate}
-        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800"
+        className="rounded-xl border border-border bg-card p-4 shadow-sm"
       >
         {/* Itinéraire source → destination */}
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Source</label>
+            <label className="text-xs font-medium text-muted">Source</label>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <select
                 value={fromKind}
                 onChange={(e) => setFromKind(e.target.value as Warehouse["kind"])}
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
               >
                 <option value="DEPOT">Entrepôt</option>
                 <option value="STORE">Magasin</option>
@@ -325,7 +379,7 @@ export function StockTransfersNewClient() {
               <select
                 value={fromWarehouseId}
                 onChange={(e) => setFromWarehouseId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
               >
                 <option value="">— Choisir</option>
                 {fromOptions.map((w) => (
@@ -334,15 +388,15 @@ export function StockTransfersNewClient() {
               </select>
             </div>
             {fromKind === "DEPOT" && (
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Flux standard : Entrepôt → Magasin (réassort)</div>
+              <div className="mt-1 text-xs text-muted">Flux standard : Entrepôt → Magasin (réassort)</div>
             )}
             {fromKind === "STORE" && (
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Flux inverse : Magasin → Entrepôt (retour stock)</div>
+              <div className="mt-1 text-xs text-muted">Flux inverse : Magasin → Entrepôt (retour stock)</div>
             )}
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Destination</label>
+            <label className="text-xs font-medium text-muted">Destination</label>
 
             {fromKind === "STORE" && (
               <div className="mt-1 flex items-center gap-2">
@@ -355,9 +409,9 @@ export function StockTransfersNewClient() {
                     setAllowStoreToStore(checked);
                     setToKind(checked ? "STORE" : "DEPOT");
                   }}
-                  className="h-4 w-4 rounded border-slate-300"
+                  className="h-4 w-4 rounded border-border"
                 />
-                <label htmlFor="allowStoreToStore" className="text-xs text-slate-600 dark:text-slate-300">
+                <label htmlFor="allowStoreToStore" className="text-xs text-muted">
                   Magasin → Magasin (rare)
                 </label>
               </div>
@@ -373,7 +427,7 @@ export function StockTransfersNewClient() {
                   if (fromKind === "STORE" && next === "DEPOT") setAllowStoreToStore(false);
                 }}
                 disabled={fromKind === "DEPOT"}
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20 disabled:opacity-60"
               >
                 <option value="DEPOT">Entrepôt</option>
                 <option value="STORE">Magasin</option>
@@ -381,7 +435,7 @@ export function StockTransfersNewClient() {
               <select
                 value={toWarehouseId}
                 onChange={(e) => setToWarehouseId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
               >
                 <option value="">— Choisir</option>
                 {toOptions.filter((w) => w.id !== fromWarehouseId).map((w) => (
@@ -394,20 +448,20 @@ export function StockTransfersNewClient() {
 
         {/* Motif global */}
         <div className="mt-4">
-          <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Motif (optionnel)</label>
+          <label className="text-xs font-medium text-muted">Motif (optionnel)</label>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Ex : réassort mensuel, retour stock…"
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+            className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
           />
         </div>
 
         {/* Ajout de lignes */}
         <div className="mt-4">
-          <div className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">Produits à transférer</div>
+          <div className="mb-2 text-xs font-medium text-muted">Produits à transférer</div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="rounded-lg border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] p-3">
             <div className="grid gap-2 md:grid-cols-12 md:items-start">
               <div className="md:col-span-7">
                 <ProductPicker
@@ -424,22 +478,22 @@ export function StockTransfersNewClient() {
                 />
               </div>
               <div className="md:col-span-2">
-                <div className="text-xs text-slate-500 dark:text-slate-400">Quantité</div>
+                <div className="text-xs text-muted">Quantité</div>
                 <input
                   value={lineQty}
                   onChange={(e) => setLineQty(e.target.value)}
                   inputMode="numeric"
                   placeholder="1"
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
                 />
               </div>
               <div className="md:col-span-3">
-                <div className="text-xs text-slate-500 dark:text-slate-400">&nbsp;</div>
+                <div className="text-xs text-muted">&nbsp;</div>
                 <button
                   type="button"
                   onClick={addLine}
                   disabled={!fromWarehouseId}
-                  className="mt-1 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:opacity-95 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900"
+                  className="mt-1 w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
                 >
                   Ajouter
                 </button>
@@ -448,11 +502,11 @@ export function StockTransfersNewClient() {
 
             {/* Stock source pour le produit sélectionné */}
             {selectedProduct && (
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-2 text-xs text-muted">
                 Stock disponible (source) :{" "}
                 {batchQtyLoading ? "…" :
                   Number.isFinite(batchQtyByProductId[selectedProduct.id])
-                    ? <span className="font-medium text-slate-700 dark:text-slate-200">{batchQtyByProductId[selectedProduct.id]}</span>
+                    ? <span className="font-medium text-foreground">{batchQtyByProductId[selectedProduct.id]}</span>
                     : "—"
                 }
               </div>
@@ -462,16 +516,16 @@ export function StockTransfersNewClient() {
               value={lineNote}
               onChange={(e) => setLineNote(e.target.value)}
               placeholder="Motif de la ligne (optionnel)"
-              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
             />
           </div>
         </div>
 
         {/* Tableau des lignes */}
         {lines.length > 0 && (
-          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <table className="w-full text-left text-sm text-slate-900 dark:text-slate-100">
-              <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-950/20 dark:text-slate-300">
+          <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-card">
+            <table className="w-full text-left text-sm text-foreground">
+              <thead className="bg-[color-mix(in_oklab,var(--card),var(--background)_20%)] text-xs text-muted">
                 <tr>
                   <th className="px-3 py-2">Produit</th>
                   <th className="px-3 py-2 text-right">Stock dispo</th>
@@ -487,10 +541,10 @@ export function StockTransfersNewClient() {
                   const hasAvail = Number.isFinite(available);
                   const insuff = hasAvail && l.qty > (available as number);
                   return (
-                    <tr key={l.key} className="border-t border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-950/30">
+                    <tr key={l.key} className="border-t border-border hover:bg-[color-mix(in_oklab,var(--card),var(--background)_25%)] transition-colors">
                       <td className="px-3 py-2">
                         <div className="font-medium">{p?.name ?? "—"}</div>
-                        {p?.sku && <div className="text-xs text-slate-500 dark:text-slate-400">{p.sku}</div>}
+                        {p?.sku && <div className="text-xs text-muted">{p.sku}</div>}
                       </td>
                       <td className={`px-3 py-2 text-right ${insuff ? "text-red-600 dark:text-red-300" : ""}`}>
                         {hasAvail ? available : "—"}
@@ -499,12 +553,12 @@ export function StockTransfersNewClient() {
                         {l.qty}
                         {insuff && <span className="ml-1 text-xs font-normal">⚠</span>}
                       </td>
-                      <td className="px-3 py-2 text-slate-500 dark:text-slate-400 text-sm">{l.note ?? "—"}</td>
+                      <td className="px-3 py-2 text-muted text-sm">{l.note ?? "—"}</td>
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
                           onClick={() => removeLine(l.key)}
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-slate-800 dark:hover:bg-red-950/20"
+                          className="rounded-lg border border-border px-2 py-1 text-xs text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/20 transition-colors"
                         >
                           Retirer
                         </button>
@@ -519,12 +573,12 @@ export function StockTransfersNewClient() {
 
         {/* Récap + CTA */}
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
+          <div className="text-xs text-muted">
             {fromSelected && toSelected ? (
               <span>
-                <span className="font-medium text-slate-700 dark:text-slate-200">{fromSelected.name}</span>
+                <span className="font-medium text-foreground">{fromSelected.name}</span>
                 {" → "}
-                <span className="font-medium text-slate-700 dark:text-slate-200">{toSelected.name}</span>
+                <span className="font-medium text-foreground">{toSelected.name}</span>
                 {lines.length > 0 && <span> · {lines.length} ligne{lines.length > 1 ? "s" : ""}</span>}
               </span>
             ) : (
@@ -534,7 +588,7 @@ export function StockTransfersNewClient() {
 
           <button
             disabled={saving || !canSubmit}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-foreground"
           >
             {/* ✅ Label CTA clair */}
             {saving ? "Création…" : "Créer le transfert"}
@@ -658,14 +712,14 @@ export function StockTransfersListClient({
   return (
     <div className="space-y-6">
       {/* Filtres dans une section dédiée */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="text-xs text-slate-600 dark:text-slate-300">Statut</label>
+            <label className="text-xs text-muted">Statut</label>
             <select
               value={status}
               onChange={(e) => { setStatus(e.target.value); replaceUrl({ status: e.target.value === "ALL" ? "" : e.target.value }); }}
-              className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="mt-1 w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
             >
               <option value="ALL">Tous les statuts</option>
               <option value="DRAFT">Brouillon</option>
@@ -677,11 +731,11 @@ export function StockTransfersListClient({
           </div>
 
           <div>
-            <label className="text-xs text-slate-600 dark:text-slate-300">Type</label>
+            <label className="text-xs text-muted">Type</label>
             <select
               value={scope}
               onChange={(e) => { setScope(e.target.value); replaceUrl({ scope: e.target.value === "ALL" ? "" : e.target.value }); }}
-              className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="mt-1 w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
             >
               <option value="ALL">Tous les types</option>
               <option value="DEPOT">Entrepôt</option>
@@ -690,11 +744,11 @@ export function StockTransfersListClient({
           </div>
 
           <div>
-            <label className="text-xs text-slate-600 dark:text-slate-300">Lieu</label>
+            <label className="text-xs text-muted">Lieu</label>
             <select
               value={warehouseId}
               onChange={(e) => { setWarehouseId(e.target.value); replaceUrl({ warehouseId: e.target.value === "ALL" ? "" : e.target.value }); }}
-              className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="mt-1 w-full appearance-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring focus:ring-primary/20"
             >
               <option value="ALL">Tous les lieux</option>
               {warehouses.map((w) => (
@@ -704,13 +758,13 @@ export function StockTransfersListClient({
           </div>
 
           <div>
-            <label className="text-xs text-slate-600 dark:text-slate-300">Recherche</label>
+            <label className="text-xs text-muted">Recherche</label>
             <input
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Note, lieu, produit…"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+              className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
             />
           </div>
         </div>
@@ -723,7 +777,7 @@ export function StockTransfersListClient({
                 setStatus("ALL"); setScope("ALL"); setWarehouseId("ALL"); setQ("");
                 replaceUrl({ status: "", scope: "", warehouseId: "", q: "" });
               }}
-              className="text-sm text-slate-500 underline underline-offset-4 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+              className="text-sm text-muted underline underline-offset-4 hover:text-foreground dark:text-slate-400 dark:hover:text-slate-100"
             >
               Réinitialiser
             </button>
@@ -732,8 +786,8 @@ export function StockTransfersListClient({
       </div>
 
       {/* Tableau */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/20">
+      <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b border-border bg-[color-mix(in_oklab,var(--card),var(--background)_20%)] px-4 py-3">
           <div className="text-sm font-medium">
             {loading ? "Chargement…" : `${filteredHistory.length} transfert${filteredHistory.length > 1 ? "s" : ""}`}
           </div>
@@ -741,7 +795,7 @@ export function StockTransfersListClient({
             type="button"
             onClick={loadHistory}
             disabled={loading}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:hover:bg-slate-900"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] hover:text-foreground disabled:opacity-50 transition-colors"
           >
             Rafraîchir
           </button>
@@ -750,15 +804,15 @@ export function StockTransfersListClient({
         {err ? (
           <div className="p-4 text-sm text-red-700 dark:text-red-200">{err}</div>
         ) : loading ? (
-          <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Chargement…</div>
+          <div className="p-8 text-center text-sm text-muted">Chargement…</div>
         ) : filteredHistory.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <div className="p-8 text-center text-sm text-muted">
             {hasActiveFilters ? "Aucun transfert pour ces critères." : "Aucun transfert."}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-900 dark:text-slate-100">
-              <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+            <table className="w-full text-left text-sm text-foreground">
+              <thead className="bg-[color-mix(in_oklab,var(--card),var(--background)_20%)] text-xs text-muted">
                 <tr>
                   <th className="px-4 py-3">Réf</th>
                   <th className="px-4 py-3">Statut</th>
@@ -780,14 +834,14 @@ export function StockTransfersListClient({
                     // ✅ Ligne entière cliquable
                     <tr
                       key={t.id}
-                      className="cursor-pointer border-t border-slate-200 odd:bg-slate-50/40 hover:bg-slate-100 dark:border-slate-800 dark:odd:bg-slate-950/20 dark:hover:bg-slate-950/40"
+                      className="cursor-pointer border-t border-border odd:bg-[color-mix(in_oklab,var(--card),var(--background)_8%)] hover:bg-[color-mix(in_oklab,var(--card),var(--background)_25%)] transition-colors"
                       onClick={() => router.push(`/app/stock/transfers/${t.id}`)}
                     >
                       <td className="px-4 py-3">
                         <Link
                           href={`/app/stock/transfers/${t.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="font-mono text-xs font-medium text-slate-700 hover:underline dark:text-slate-200"
+                          className="font-mono text-xs font-medium text-foreground hover:underline"
                         >
                           {shortRef(t.id)}
                         </Link>
@@ -795,7 +849,7 @@ export function StockTransfersListClient({
                       <td className="px-4 py-3">
                         <StatusBadge status={t.status ?? ""} />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                      <td className="px-4 py-3 whitespace-nowrap text-muted">
                         {fmtDate(t.createdAt)}
                       </td>
                       <td className="px-4 py-3">
@@ -804,7 +858,7 @@ export function StockTransfersListClient({
                           <span className="text-slate-400">→</span>
                           <span className="font-medium">{t.toWarehouse?.name}</span>
                         </div>
-                        <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                        <div className="mt-0.5 text-xs text-slate-400 dark:text-muted">
                           {KIND_LABELS[t.fromWarehouse?.kind ?? ""] ?? t.fromWarehouse?.kind} → {KIND_LABELS[t.toWarehouse?.kind ?? ""] ?? t.toWarehouse?.kind}
                         </div>
                       </td>

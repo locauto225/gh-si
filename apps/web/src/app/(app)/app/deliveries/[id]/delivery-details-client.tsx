@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
-import { ChevronRight, Copy, ExternalLink } from "lucide-react";
+import { ChevronRight, Copy, ExternalLink, ArrowRightLeft } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +67,7 @@ type Delivery = {
     contactNameSnapshot?: string | null;
     addressSnapshot?: string | null;
   } | null;
+  transfer?: { id: string; number?: string | null; status?: string | null } | null;
   lines: DeliveryLine[];
   items?: Array<{
     id: string; qty: number; note?: string | null;
@@ -215,6 +216,12 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
 
   const [copied, setCopied] = useState(false);
 
+  // Actions internes (réassort)
+  const [internalBusy, setInternalBusy]   = useState(false);
+  const [internalErr, setInternalErr]     = useState<string | null>(null);
+  const [internalOk, setInternalOk]       = useState<string | null>(null);
+  const [internalNote, setInternalNote]   = useState("");
+
   const trackingUrl = useMemo(() => {
     if (!item?.trackingToken) return null;
     return `/track/${item.trackingToken}`;
@@ -341,6 +348,76 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
     }
   }
 
+  // ── Actions internes synchronisées (réassort) ────────────────────────────
+
+  async function onShipInternal() {
+    if (!item) return;
+    setInternalBusy(true); setInternalErr(null); setInternalOk(null);
+    try {
+      // 1. Mettre à jour le statut du BL
+      const res = await apiPatch<{ item: Delivery }>(`/deliveries/${item.id}/status`, {
+        status: "OUT_FOR_DELIVERY",
+        message: internalNote.trim() || null,
+      });
+      setItem(res.item);
+      setStatusNext(getDefaultNextStatus(res.item.status));
+      // 2. Expédier le transfert lié (best-effort)
+      if (item.transfer?.id) {
+        try {
+          await apiPost(`/stock/transfers/${item.transfer.id}/ship`, { note: internalNote.trim() || null });
+          setInternalOk("BL et transfert de stock passés en expédition.");
+        } catch {
+          setInternalOk("BL expédié. Le transfert de stock n'a pas pu être synchronisé automatiquement — mettez-le à jour manuellement.");
+        }
+      } else {
+        setInternalOk("BL passé en livraison.");
+      }
+      setInternalNote("");
+      setTimeout(() => setInternalOk(null), 6000);
+    } catch (e: unknown) {
+      setInternalErr(e instanceof ApiError ? e.message : "Erreur lors de l'expédition.");
+    } finally {
+      setInternalBusy(false);
+    }
+  }
+
+  async function onReceiveInternal() {
+    if (!item) return;
+    setInternalBusy(true); setInternalErr(null); setInternalOk(null);
+    try {
+      // 1. Marquer le BL comme livré
+      const res = await apiPatch<{ item: Delivery }>(`/deliveries/${item.id}/status`, {
+        status: "DELIVERED",
+        message: internalNote.trim() || null,
+      });
+      setItem(res.item);
+      setStatusNext(getDefaultNextStatus(res.item.status));
+      // 2. Réceptionner le transfert lié (best-effort, toutes les quantités)
+      if (item.transfer?.id && item.items?.length) {
+        try {
+          await apiPost(`/stock/transfers/${item.transfer.id}/receive`, {
+            note: internalNote.trim() || null,
+            lines: (item.items ?? []).map((it) => ({
+              productId: it.product.id,
+              qtyReceived: it.qty,
+            })),
+          });
+          setInternalOk("Réception confirmée. BL et transfert de stock mis à jour.");
+        } catch {
+          setInternalOk("BL livré. Le transfert de stock n'a pas pu être synchronisé — enregistrez la réception manuellement.");
+        }
+      } else {
+        setInternalOk("BL marqué comme livré.");
+      }
+      setInternalNote("");
+      setTimeout(() => setInternalOk(null), 6000);
+    } catch (e: unknown) {
+      setInternalErr(e instanceof ApiError ? e.message : "Erreur lors de la réception.");
+    } finally {
+      setInternalBusy(false);
+    }
+  }
+
   // ── Tracking ──────────────────────────────────────────────────────────────
 
   async function copyTracking() {
@@ -394,6 +471,49 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
         <ChevronRight className="h-3.5 w-3.5" />
         <span className="font-medium text-foreground">{item.number}</span>
       </div>
+
+      {/* ── Bannière réassort — lié ou à créer ───────────────────────────────── */}
+      {isInternal && !isFinal && (
+        item.transfer ? (
+          // Transfert déjà lié — statut synchronisé
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-900/40 dark:bg-sky-950/20">
+            <div className="flex gap-3 items-center">
+              <ArrowRightLeft className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+              <div className="text-sm text-sky-800 dark:text-sky-200">
+                <span className="font-semibold">Transfert de stock lié</span>
+                {item.transfer.number && (
+                  <span className="ml-2 font-mono text-xs opacity-80">#{item.transfer.number}</span>
+                )}
+                {" · "}
+                <span className="text-xs">Les actions Expédier / Réceptionner ci-dessous synchronisent les deux documents.</span>
+              </div>
+            </div>
+            <Link
+              href={`/app/stock/transfers/${item.transfer.id}`}
+              className="shrink-0 rounded-lg border border-sky-300 bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-200 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-200 dark:hover:bg-sky-900/70 transition-colors"
+            >
+              Voir le transfert →
+            </Link>
+          </div>
+        ) : (
+          // Pas encore de transfert lié
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <div className="flex gap-3">
+              <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="text-sm text-amber-800 dark:text-amber-200">
+                <span className="font-semibold">Aucun transfert de stock lié.</span>
+                {" "}Pour mettre à jour les niveaux de stock, créez le transfert associé.
+              </div>
+            </div>
+            <Link
+              href={`/app/stock/transfers/new?from=${item.warehouseId}`}
+              className="shrink-0 rounded-lg border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70 transition-colors"
+            >
+              Créer le transfert →
+            </Link>
+          </div>
+        )
+      )}
 
       {/* ── Carte principale ──────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-card shadow-sm ring-1 ring-border/60">
@@ -617,8 +737,96 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ── Changer le statut ─────────────────────────────────────────────────── */}
-      {!isFinal ? (
+      {/* ── Actions statut ────────────────────────────────────────────────────── */}
+      {isFinal ? (
+        <div className="rounded-xl border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] px-4 py-3 text-sm text-muted">
+          Ce bon de livraison est dans un statut final (
+          <span className="font-medium text-foreground">{STATUS_LABELS[item.status]}</span>
+          ) — aucune modification possible.
+        </div>
+      ) : isInternal ? (
+        /* ── Réassort : boutons d'action contextuels synchronisés ─────────────── */
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm ring-1 ring-border/60 space-y-3">
+          <div className="text-sm font-semibold text-foreground">Actions</div>
+
+          {/* Note optionnelle */}
+          <div>
+            <label className="text-xs text-muted">Note (optionnel)</label>
+            <input
+              value={internalNote}
+              onChange={(e) => setInternalNote(e.target.value)}
+              placeholder="Ex : chauffeur présent à 14h, manque 2 colis…"
+              className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Feedback */}
+          {internalOk && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+              {internalOk}
+            </div>
+          )}
+          {internalErr && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+              {internalErr}
+            </div>
+          )}
+
+          {/* Boutons contextuels selon le statut courant */}
+          <div className="flex flex-wrap gap-2">
+            {(item.status === "DRAFT" || item.status === "PREPARED") && (
+              <button
+                type="button"
+                disabled={internalBusy}
+                onClick={onShipInternal}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                {internalBusy ? "Expédition…" : item.transfer ? "Expédier BL + transfert" : "Confirmer l'expédition"}
+              </button>
+            )}
+            {(item.status === "OUT_FOR_DELIVERY" || item.status === "PARTIALLY_DELIVERED") && (
+              <button
+                type="button"
+                disabled={internalBusy}
+                onClick={onReceiveInternal}
+                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                {internalBusy ? "Réception…" : item.transfer ? "Réceptionner BL + transfert" : "Confirmer la réception"}
+              </button>
+            )}
+            {/* Bouton secondaire : changer statut librement */}
+            <div className="relative group">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={onSetStatus}
+                className="rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted hover:text-foreground disabled:opacity-50 transition-colors"
+              >
+                Autre statut…
+              </button>
+              <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-48 rounded-lg border border-border bg-card shadow-lg p-1">
+                {STATUS_ACTIONS.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => { setStatusNext(s.value); setTimeout(onSetStatus, 0); }}
+                    className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)]"
+                  >
+                    <span className="text-foreground">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ── BL client : sélecteur de statut classique ─────────────────────────── */
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm ring-1 ring-border/60 space-y-3">
           <div className="text-sm font-semibold text-foreground">Changer le statut</div>
 
@@ -638,7 +846,6 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
                 {STATUS_ACTIONS.find((s) => s.value === statusNext)?.description}
               </div>
             </div>
-
             <div>
               <label className="text-xs text-muted">Message (optionnel)</label>
               <input
@@ -665,12 +872,6 @@ export default function DeliveryDetailsClient({ id }: { id: string }) {
               {err}
             </div>
           )}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] px-4 py-3 text-sm text-muted">
-          Ce bon de livraison est dans un statut final (
-          <span className="font-medium text-foreground">{STATUS_LABELS[item.status]}</span>
-          ) — aucune modification possible.
         </div>
       )}
 

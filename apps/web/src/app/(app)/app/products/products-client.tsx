@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, apiFetch, apiGet, apiPost } from "@/lib/api";
+import { ApiError, apiGet } from "@/lib/api";
+import { useAsyncTask } from "@/hooks/use-async-task";
 
 type Category = { id: string; name: string; slug: string };
 
@@ -11,6 +14,9 @@ type Product = {
   name: string;
   unit: string;
   price: number;
+  purchasePrice?: number | null;
+  bestSupplierUnitPrice?: number | null;
+  imageUrl?: string | null;
   isActive: boolean;
   categoryId?: string | null;
   category?: Category | null;
@@ -19,8 +25,6 @@ type Product = {
 };
 
 type StatusFilter = "active" | "inactive" | "all";
-
-const UNIT_PRESETS = ["bouteille", "canette", "pack", "carton", "caisse", "bidon", "fût"] as const;
 
 function formatXOF(amount: number) {
   return new Intl.NumberFormat("fr-FR", {
@@ -36,381 +40,172 @@ function getErrMsg(e: unknown, fallback = "Erreur"): string {
 }
 
 export default function ProductsClient() {
+  const router = useRouter();
   const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const loadTask = useAsyncTask();
+  const loading = !initialLoaded && loadTask.loading;
+  const reloading = initialLoaded && loadTask.loading;
 
-  // Filtres liste
   const [status, setStatus] = useState<StatusFilter>("active");
   const [q, setQ] = useState("");
-
-  // Catégories
-  const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState<string>("");
-  // ✅ Création catégorie inline — plus de toggle, section dédiée visible directement
-  const [showCatCreate, setShowCatCreate] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [creatingCategory, setCreatingCategory] = useState(false);
 
-  // Formulaire produit
-  const [sku, setSku] = useState("");
-  const [name, setName] = useState("");
-  const [unit, setUnit] = useState<string>("bouteille");
-  const [unitCustom, setUnitCustom] = useState("");
-  const [priceXof, setPriceXof] = useState<string>("0");
-  const [isActive, setIsActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const isCustomUnit = unit === "__other__";
-  const finalUnit = isCustomUnit ? unitCustom.trim() : unit;
-
-  const price = useMemo(() => {
-    const v = Number(String(priceXof).replace(/\s/g, "").replace(/,/g, "."));
-    if (!Number.isFinite(v) || v < 0) return 0;
-    return Math.trunc(v);
-  }, [priceXof]);
-
-  // ✅ Désactivation bouton si champs obligatoires manquants
-  const canSubmit = sku.trim().length > 0 && name.trim().length > 0 && (!isCustomUnit || unitCustom.trim().length > 0);
-
-  // ✅ Filtrage liste côté client
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return items;
-    return items.filter(
-      (p) =>
-        p.name.toLowerCase().includes(s) ||
-        p.sku.toLowerCase().includes(s) ||
-        (p.category?.name ?? "").toLowerCase().includes(s)
-    );
-  }, [items, q]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   async function loadCategories() {
     try {
-      const res = await apiGet<{ items: Category[] }>("/categories");
+      // si ton endpoint /categories renvoie déjà { items: [...] }
+      const res = await apiGet<{ items: Category[] }>("/categories?includeSubcategories=true");
       setCategories(res.items ?? []);
     } catch {
+      // catégorie = filtre optionnel : on ne bloque pas
       setCategories([]);
     }
   }
 
   async function load() {
-    setLoading(true);
     setErr(null);
     try {
-      const res = await apiGet<{ items: Product[] }>(`/products?status=${status}`);
+      const res = await loadTask.run(() => apiGet<{ items: Product[] }>(`/products?status=${status}`));
       setItems(res.items ?? []);
     } catch (e: unknown) {
       setErr(getErrMsg(e, "Erreur lors du chargement"));
-    } finally {
-      setLoading(false);
     }
+    setInitialLoaded(true);
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [status]);
-  useEffect(() => { loadCategories(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setSaving(true);
-    setErr(null);
-    setSuccess(null);
-    try {
-      const res = await apiPost<{ item: Product }>("/products", {
-        sku: sku.trim(),
-        name: name.trim(),
-        ...(categoryId ? { categoryId } : {}),
-        unit: finalUnit || "unité",
-        price,
-        isActive,
-      });
+  useEffect(() => {
+    loadCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      // ✅ Message de succès
-      setSuccess(`"${res.item?.name ?? name.trim()}" ajouté au catalogue.`);
+  const stats = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    let noCat = 0;
 
-      setSku("");
-      setName("");
-      setUnit("bouteille");
-      setUnitCustom("");
-      setCategoryId("");
-      setPriceXof("0");
-      setIsActive(true);
-      await load();
-    } catch (e: unknown) {
-      setErr(getErrMsg(e, "Erreur lors de la création"));
-    } finally {
-      setSaving(false);
+    for (const p of items) {
+      if (p.isActive) active++;
+      else inactive++;
+      if (!p.categoryId) noCat++;
     }
-  }
+    return { active, inactive, noCat, total: items.length };
+  }, [items]);
 
-  async function onCreateCategory() {
-    const catName = newCategoryName.trim();
-    if (!catName) return;
-    setCreatingCategory(true);
-    setErr(null);
-    try {
-      const res = await apiPost<{ item: Category }>("/categories", { name: catName });
-      setNewCategoryName("");
-      setShowCatCreate(false);
-      await loadCategories();
-      setCategoryId(res.item.id);
-    } catch (e: unknown) {
-      setErr(getErrMsg(e, "Erreur lors de la création de la catégorie"));
-    } finally {
-      setCreatingCategory(false);
-    }
-  }
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
 
-  async function onToggleStatus(p: Product) {
-    setUpdatingId(p.id);
-    setErr(null);
-    try {
-      await apiFetch(`/products/${p.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !p.isActive }),
-      });
-      await load();
-    } catch (e: unknown) {
-      setErr(getErrMsg(e, "Erreur lors de la mise à jour du statut"));
-    } finally {
-      setUpdatingId(null);
-    }
-  }
+    return items.filter((p) => {
+      if (categoryId && (p.categoryId ?? "") !== categoryId) return false;
+
+      if (!s) return true;
+
+      const cat = (p.category?.name ?? "").toLowerCase();
+      return (
+        p.name.toLowerCase().includes(s) ||
+        p.sku.toLowerCase().includes(s) ||
+        cat.includes(s)
+      );
+    });
+  }, [items, q, categoryId]);
 
   return (
     <div className="space-y-4">
-      {/* Feedback succès */}
-      {success && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
-          {success}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loadTask.loading}
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm hover:bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] disabled:opacity-50"
+        >
+          {loadTask.loading ? "Actualisation…" : "Rafraîchir"}
+        </button>
+
+        <Link
+          href="/app/products/new"
+          className="bg-primary text-primary-foreground px-6 py-2 rounded-xl font-bold hover:shadow-lg hover:shadow-primary/20 transition-all"
+        >
+          + Nouveau produit
+        </Link>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher (nom, référence, catégorie…)"
+          className="w-80 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted outline-none focus:ring"
+        />
+
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as StatusFilter)}
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring"
+        >
+          <option value="active">Actifs</option>
+          <option value="inactive">Inactifs</option>
+          <option value="all">Tous</option>
+        </select>
+
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className="min-w-56 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring"
+        >
+          <option value="">Toutes catégories</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="ml-auto text-xs text-muted-foreground">
+          {stats.active} actifs • {stats.inactive} inactifs • {stats.noCat} sans catégorie
+        </div>
+      </div>
+
+      {err && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+          <div className="flex items-center justify-between gap-3">
+            <span>{err}</span>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loadTask.loading}
+              className="rounded-md border border-red-200/70 bg-white/70 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-white disabled:opacity-50 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
+            >
+              {loadTask.loading ? "Réessai…" : "Réessayer"}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ============================================================
-          Formulaire création
-      ============================================================ */}
-      <form
-        onSubmit={onCreate}
-        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800"
-      >
-        <div className="mb-3 text-sm font-medium text-slate-900 dark:text-slate-100">
-          Ajouter un produit
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-6">
-          {/* SKU */}
-          <div className="md:col-span-1">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-              SKU <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              placeholder="SKU-001"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-              required
-            />
-          </div>
-
-          {/* Nom */}
-          <div className="md:col-span-2">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-              Nom <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex : Bière Flag 33cl"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-              required
-            />
-          </div>
-
-          {/* Catégorie */}
-          <div className="md:col-span-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Catégorie <span className="text-slate-400 font-normal">(optionnel)</span>
-              </label>
-              <div className="flex gap-1">
-                {/* ✅ Bouton avec label textuel, pas juste ↻ */}
-                <button
-                  type="button"
-                  onClick={loadCategories}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-                  title="Rafraîchir"
-                >
-                  ↻
-                </button>
-                {/* ✅ Toggle explicite et stable */}
-                <button
-                  type="button"
-                  onClick={() => { setShowCatCreate((v) => !v); setNewCategoryName(""); }}
-                  className={`rounded-lg border px-2 py-1 text-xs ${
-                    showCatCreate
-                      ? "border-slate-400 bg-slate-100 dark:border-slate-600 dark:bg-slate-800"
-                      : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-                  }`}
-                >
-                  {showCatCreate ? "Annuler" : "+ Catégorie"}
-                </button>
-              </div>
+      {/* Table */}
+      <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] px-4 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-foreground">
+            {loading ? "Chargement…" : `${filtered.length} produit${filtered.length > 1 ? "s" : ""}`}
             </div>
-
-            {/* ✅ Création catégorie visible directement si toggle actif */}
-            {showCatCreate ? (
-              <div className="mt-1 flex gap-2">
-                <input
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="Ex : Vins, Alcools…"
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onCreateCategory(); } }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={onCreateCategory}
-                  disabled={creatingCategory || !newCategoryName.trim()}
-                  className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-                >
-                  {/* ✅ Busy label explicite */}
-                  {creatingCategory ? "Création…" : "Créer"}
-                </button>
-              </div>
-            ) : (
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-              >
-                <option value="">— Sans catégorie</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+            {reloading && (
+              <div className="text-xs text-muted-foreground">Actualisation…</div>
             )}
-          </div>
-
-          {/* Unité */}
-          <div className="md:col-span-1">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Unité</label>
-            <select
-              value={unit}
-              onChange={(e) => {
-                setUnit(e.target.value);
-                if (e.target.value !== "__other__") setUnitCustom("");
-              }}
-              className="mt-1 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-            >
-              {UNIT_PRESETS.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-              <option value="__other__">Autre…</option>
-            </select>
-
-            {isCustomUnit && (
-              <input
-                value={unitCustom}
-                onChange={(e) => setUnitCustom(e.target.value)}
-                placeholder="Ex : sachet"
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-                autoFocus
-              />
-            )}
-          </div>
-
-          {/* Prix */}
-          <div className="md:col-span-1">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Prix (FCFA)</label>
-            <input
-              value={priceXof}
-              onChange={(e) => setPriceXof(e.target.value)}
-              inputMode="numeric"
-              placeholder="1500"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="rounded"
-            />
-            {/* ✅ Label plus guidant */}
-            Disponible à la vente dès la création
-          </label>
-
-          {/* ✅ Bouton désactivé si champs obligatoires manquants */}
-          <button
-            disabled={saving || !canSubmit}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-          >
-            {/* ✅ CTA clair + busy correct */}
-            {saving ? "Création…" : "Ajouter au catalogue"}
-          </button>
-        </div>
-
-        {err && (
-          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-            {err}
-          </div>
-        )}
-      </form>
-
-      {/* ============================================================
-          Liste
-      ============================================================ */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/60 dark:border-slate-800 dark:bg-slate-900 dark:ring-slate-800">
-        {/* Header avec filtres dédiés */}
-        <div className="border-b border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/20">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* ✅ Titre descriptif */}
-            <div className="text-sm font-medium text-slate-900 dark:text-slate-100 mr-auto">
-              {loading ? "Chargement…" : `${filtered.length} produit${filtered.length > 1 ? "s" : ""}`}
-            </div>
-
-            {/* Recherche */}
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Rechercher (nom, SKU, catégorie…)"
-              className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
-
-            {/* Filtre statut */}
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as StatusFilter)}
-              className="appearance-none rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:ring hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-            >
-              <option value="active">Actifs</option>
-              <option value="inactive">Inactifs</option>
-              <option value="all">Tous</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
-            >
-              Rafraîchir
-            </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Chargement…</div>
+          <div className="p-8 text-center text-sm text-muted">Chargement…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <div className="p-8 text-center text-sm text-muted">
             {q.trim()
               ? "Aucun produit ne correspond."
               : status === "inactive"
@@ -421,62 +216,112 @@ export default function ProductsClient() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-900 dark:text-slate-100">
-              <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+            <table className="w-full text-left text-sm text-foreground">
+              <thead className="bg-[color-mix(in_oklab,var(--card),var(--foreground)_8%)] text-[11px] uppercase font-black text-muted">
                 <tr>
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Nom</th>
-                  <th className="px-4 py-3">Catégorie</th>
-                  <th className="px-4 py-3">Unité</th>
-                  <th className="px-4 py-3">Prix</th>
-                  <th className="px-4 py-3">Statut</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                  <th className="px-4 py-2.5">Produit</th>
+                  <th className="px-4 py-2.5">Catégorie</th>
+                  <th className="px-4 py-2.5">Unité</th>
+                  <th className="px-4 py-2.5 text-right">Prix d&apos;achat</th>
+                  <th className="px-4 py-2.5">Dernière modif</th>
+                  <th className="px-4 py-2.5">Statut</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((p) => (
                   <tr
                     key={p.id}
-                    className="border-t border-slate-200 odd:bg-slate-50/40 hover:bg-slate-50 dark:border-slate-800 dark:odd:bg-slate-950/20 dark:hover:bg-slate-950/30"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/app/products/${p.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/app/products/${p.id}`);
+                      }
+                    }}
+                    className="border-t border-border cursor-pointer hover:bg-[color-mix(in_oklab,var(--card),var(--background)_25%)]"
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-200">
-                      {p.sku}
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2 min-w-[220px]">
+                        <div className="h-8 w-8 rounded-md border border-border bg-[color-mix(in_oklab,var(--card),var(--background)_25%)] overflow-hidden flex items-center justify-center shrink-0">
+                          {p.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.imageUrl}
+                              alt={p.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-muted">—</span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-base font-medium leading-tight truncate">{p.name}</div>
+                          <div className="font-mono text-[11px] text-foreground/70 truncate">{p.sku}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3 font-medium">{p.name}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                      {p.category?.name ?? "—"}
+
+                    <td className="px-4 py-2">
+                      {p.category?.name ? (
+                        <span className="inline-flex items-center rounded-full border border-border/70 bg-[color-mix(in_oklab,var(--card),var(--background)_18%)] px-2 py-0.5 text-[11px] text-muted">
+                          {p.category.name}
+                        </span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.unit}</td>
-                    <td className="px-4 py-3 tabular-nums">{formatXOF(p.price)}</td>
-                    <td className="px-4 py-3">
+
+                    <td className="px-4 py-2 text-sm text-foreground/75">{p.unit}</td>
+
+                    <td className="px-4 py-2 text-right tabular-nums text-foreground">
+                      {(() => {
+                        const best = Math.trunc(Number(p.bestSupplierUnitPrice ?? 0));
+                        const purchase = Math.trunc(Number(p.purchasePrice ?? 0));
+                        const amount = best > 0 ? best : purchase > 0 ? purchase : null;
+                        const source =
+                          best > 0
+                            ? "Fournisseur"
+                            : purchase > 0
+                              ? "Référence"
+                              : null;
+
+                        if (amount === null) return "—";
+
+                        return (
+                          <div className="grid justify-items-end gap-0.5">
+                            <div className="font-semibold">{formatXOF(amount)}</div>
+                            {source && (
+                              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {source}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+
+                    <td className="px-4 py-2 text-xs text-muted-foreground">
+                      {new Date(p.updatedAt).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })}
+                    </td>
+
+                    <td className="px-4 py-2">
                       <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
                           p.isActive
                             ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
-                            : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-300"
+                            : "border-border bg-[color-mix(in_oklab,var(--card),var(--background)_30%)] text-muted"
                         }`}
                       >
                         {p.isActive ? "Actif" : "Inactif"}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onToggleStatus(p)}
-                        disabled={updatingId === p.id}
-                        className={`rounded-lg px-3 py-1.5 text-sm disabled:opacity-50 ${
-                          p.isActive
-                            ? "border border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-                            : "bg-slate-900 font-medium text-white hover:opacity-90 dark:bg-slate-100 dark:text-slate-900"
-                        }`}
-                      >
-                        {/* ✅ Busy label explicite */}
-                        {updatingId === p.id
-                          ? "Mise à jour…"
-                          : p.isActive
-                          ? "Désactiver"
-                          : "Réactiver"}
-                      </button>
                     </td>
                   </tr>
                 ))}

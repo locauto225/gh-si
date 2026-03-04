@@ -31,6 +31,32 @@ exports.suppliersService = {
             take: q.limit,
         });
     },
+    listLite: async (q) => {
+        const whereBase = { deletedAt: null };
+        const whereStatus = q.status === "all"
+            ? {}
+            : q.status === "active"
+                ? { isActive: true }
+                : { isActive: false };
+        const items = await prisma_1.prisma.supplier.findMany({
+            where: {
+                ...whereBase,
+                ...whereStatus,
+                ...(q.q
+                    ? {
+                        nameSearch: { contains: q.q.trim().toLowerCase() },
+                    }
+                    : {}),
+            },
+            orderBy: { name: "asc" },
+            take: q.limit,
+            select: {
+                id: true,
+                name: true,
+            },
+        });
+        return items;
+    },
     get: async (id) => {
         const item = await prisma_1.prisma.supplier.findUnique({ where: { id } });
         if (!item || item.deletedAt) {

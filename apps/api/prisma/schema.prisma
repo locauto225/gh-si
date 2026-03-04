@@ -165,6 +165,12 @@ model ProductPackaging {
   // Optionnel: code-barres spécifique à ce conditionnement
   barcode String? @unique
 
+  // ✅ Logistique (optionnels)
+  // Poids total réel du colisage (carton/pack/palette) en grammes
+  grossWeightGr Int?
+  // Poids de l'emballage (carton vide) en grammes, si tu veux calculer: units*product.weightGr + tare
+  tareWeightGr  Int?
+
   product Product @relation(fields: [productId], references: [id])
 
   // Opposite relations
@@ -254,6 +260,15 @@ model Product {
 
   // ✅ Boissons (optionnels)
   brand    String?
+
+  // ✅ Logistique / e-commerce (standardisés)
+  // Poids d'une unité de base en grammes (ex: bouteille 1.5L ≈ 1500g + emballage)
+  weightGr Int?
+  // Contenance en millilitres (ex: 330, 500, 1000, 1500)
+  volumeMl Int?
+
+  // ✅ Photo produit (optionnelle) — URL (CDN / Cloudinary)
+  imageUrl String?
 
   // ⚠️ Legacy: ancien code-barres unique (on garde pour compat/migration)
   // Note SQLite: une contrainte UNIQUE autorise plusieurs NULL.

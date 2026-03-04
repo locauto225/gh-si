@@ -45,26 +45,88 @@ export const productsService = {
     // Limite pour éviter de renvoyer trop d'items
     const take = Math.min(Math.max(Number(opts?.limit ?? 50) || 50, 1), 500);
 
-    return prisma.product.findMany({
+    const rows = await prisma.product.findMany({
       where,
       take,
-      include: { category: true },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        nameSearch: true,
+        unit: true,
+        price: true,
+        isActive: true,
+        deletedAt: true,
+        purchasePrice: true,
+        weightGr: true,
+        volumeMl: true,
+        brand: true,
+        imageUrl: true,
+        barcode: true,
+        packSize: true,
+        description: true,
+        taxCode: true,
+        taxRate: true,
+        categoryId: true,
+        createdAt: true,
+        updatedAt: true,
+        category: true,
+        suppliers: {
+          select: {
+            lastUnitPrice: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
+    });
+
+    return rows.map((row) => {
+      const supplierPrices = row.suppliers
+        .map((s) => Number(s.lastUnitPrice))
+        .filter((v) => Number.isFinite(v) && v > 0)
+        .map((v) => Math.trunc(v));
+
+      const bestSupplierUnitPrice = supplierPrices.length > 0 ? Math.min(...supplierPrices) : null;
+      const visibleCategory = row.category && row.category.deletedAt === null ? row.category : null;
+
+      return {
+        ...row,
+        categoryId: visibleCategory ? row.categoryId : null,
+        category: visibleCategory,
+        bestSupplierUnitPrice,
+      };
     });
   },
 
   get: async (id: string) => {
-    return prisma.product.findUnique({
+    const item = await prisma.product.findUnique({
       where: { id },
       include: {
         category: true,
         barcodes: true,
         packagings: true,
-        subCategories: { include: { subCategory: true } },
+        subCategories: {
+          where: {
+            subCategory: {
+              deletedAt: null,
+            },
+          },
+          include: { subCategory: true },
+        },
         suppliers: { include: { supplier: true, packaging: true } },
         purchasePrices: { orderBy: { effectiveAt: "desc" }, take: 20 },
       },
     });
+
+    if (!item) return null;
+
+    const visibleCategory = item.category && item.category.deletedAt === null ? item.category : null;
+
+    return {
+      ...item,
+      categoryId: visibleCategory ? item.categoryId : null,
+      category: visibleCategory,
+    };
   },
 
   create: async (data: ProductCreateInput) => {
@@ -83,8 +145,15 @@ export const productsService = {
         // ✅ Achat
         purchasePrice,
 
+        // ✅ Logistique / e-commerce
+        weightGr: data.weightGr ?? null,
+        volumeMl: data.volumeMl ?? null,
+
         // ✅ Boissons (optionnels)
         brand: data.brand ?? null,
+
+        // ✅ Photo produit (optionnelle) — URL (CDN / Cloudinary)
+        imageUrl: data.imageUrl ?? null,
 
         // ✅ Catégorie
         categoryId: data.categoryId ?? null,
@@ -95,7 +164,15 @@ export const productsService = {
           : undefined,
 
         packagings: data.packagings?.length
-          ? { create: data.packagings.map((p) => ({ name: p.name, units: p.units, barcode: p.barcode ?? null })) }
+          ? {
+              create: data.packagings.map((p) => ({
+                name: p.name,
+                units: p.units,
+                barcode: p.barcode ?? null,
+                grossWeightGr: p.grossWeightGr ?? null,
+                tareWeightGr: p.tareWeightGr ?? null,
+              })),
+            }
           : undefined,
 
         subCategories: data.subCategoryIds?.length
@@ -139,8 +216,13 @@ export const productsService = {
       isActive: data.isActive === undefined ? undefined : data.isActive,
 
       purchasePrice: data.purchasePrice === undefined ? undefined : data.purchasePrice,
+      weightGr: data.weightGr === undefined ? undefined : data.weightGr ?? null,
+      volumeMl: data.volumeMl === undefined ? undefined : data.volumeMl ?? null,
 
       brand: data.brand === undefined ? undefined : data.brand ?? null,
+
+      imageUrl: data.imageUrl === undefined ? undefined : data.imageUrl ?? null,
+
       categoryId: data.categoryId === undefined ? undefined : data.categoryId ?? null,
 
       // Si on change le statut via update, on aligne deletedAt
@@ -165,7 +247,13 @@ export const productsService = {
     if (data.packagings !== undefined) {
       relData.packagings = {
         deleteMany: {},
-        create: (data.packagings ?? []).map((p) => ({ name: p.name, units: p.units, barcode: p.barcode ?? null })),
+        create: (data.packagings ?? []).map((p) => ({
+          name: p.name,
+          units: p.units,
+          barcode: p.barcode ?? null,
+          grossWeightGr: p.grossWeightGr ?? null,
+          tareWeightGr: p.tareWeightGr ?? null,
+        })),
       };
     }
 

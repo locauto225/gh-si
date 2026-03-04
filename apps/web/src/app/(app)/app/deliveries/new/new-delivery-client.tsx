@@ -45,9 +45,9 @@ function parseQty(raw: string) {
 // ─── Sélecteur de mode (tabs discrets) ───────────────────────────────────────
 
 const MODES: { key: Mode; label: string }[] = [
-  { key: "sale",     label: "Depuis une vente"    },
-  { key: "order",    label: "Depuis une commande" },
-  { key: "internal", label: "Transfert interne"   },
+  { key: "sale",     label: "Depuis une vente"          },
+  { key: "order",    label: "Depuis une commande"       },
+  { key: "internal", label: "Réassort / Livraison magasin" },
 ];
 
 function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -432,7 +432,7 @@ function DocumentMode({ mode, initialDocId, onSubmit }: {
 
 // ─── Mode transfert interne ───────────────────────────────────────────────────
 
-function InternalMode({ onSubmit }: { onSubmit: (payload: object) => Promise<void> }) {
+function InternalMode({ onSubmit, initialFromId = "", initialToId = "" }: { onSubmit: (payload: object) => Promise<void>; initialFromId?: string; initialToId?: string }) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [stores, setStores]         = useState<StoreRef[]>([]);
   const [fromId, setFromId]         = useState("");
@@ -453,10 +453,21 @@ function InternalMode({ onSubmit }: { onSubmit: (payload: object) => Promise<voi
           apiGet<{ items: Warehouse[] }>("/warehouses?status=active"),
           apiGet<{ items: StoreRef[] }>("/stores?status=active"),
         ]);
-        setWarehouses(wRes.items ?? []);
-        setStores(sRes.items ?? []);
+        const whs = wRes.items ?? [];
+        const sts = sRes.items ?? [];
+        setWarehouses(whs);
+        setStores(sts);
+        // Pré-sélection depuis les params URL
+        if (initialFromId) setFromId(initialFromId);
+        if (initialToId) {
+          // initialToId peut être un warehouseId ou un storeId — on détecte
+          const isWh = whs.some((w) => w.id === initialToId);
+          if (isWh) { setDestType("warehouse"); setToWhId(initialToId); }
+          else       { setDestType("store");     setToStoreId(initialToId); }
+        }
       } catch { /* silencieux */ }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function addLine() {
@@ -636,10 +647,14 @@ export default function NewDeliveryClient({
   mode: initialMode = "sale",
   saleId,
   orderId,
+  fromWarehouseId,
+  toWarehouseId,
 }: {
   mode?: Mode;
   saleId?: string;
   orderId?: string;
+  fromWarehouseId?: string;
+  toWarehouseId?: string;
 }) {
   const router = useRouter();
   const hasContext = !!(saleId || orderId);
@@ -658,7 +673,7 @@ export default function NewDeliveryClient({
         <p className="mt-0.5 text-sm text-muted">
           {mode === "sale"     && "Depuis une vente validée — le partiel est possible."}
           {mode === "order"    && "Depuis une commande B2B confirmée — le partiel est possible."}
-          {mode === "internal" && "Transfert de stock depuis un entrepôt."}
+          {mode === "internal" && "Génère un BL à remettre au chauffeur pour un réassort vers un magasin ou un autre entrepôt."}
         </p>
       </div>
 
@@ -672,7 +687,7 @@ export default function NewDeliveryClient({
         <DocumentMode key="order" mode="order" initialDocId={orderId} onSubmit={handleSubmit} />
       )}
       {mode === "internal" && (
-        <InternalMode onSubmit={handleSubmit} />
+        <InternalMode onSubmit={handleSubmit} initialFromId={fromWarehouseId} initialToId={toWarehouseId} />
       )}
 
     </div>

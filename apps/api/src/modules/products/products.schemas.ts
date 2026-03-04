@@ -9,6 +9,10 @@ const productPackagingSchema = z.object({
   name: z.string().trim().min(1).max(64),
   units: z.number().int().positive(),
   barcode: z.string().trim().min(1).max(64).optional(),
+
+  // ✅ Logistique (optionnels)
+  grossWeightGr: z.number().int().min(0).optional(),
+  tareWeightGr: z.number().int().min(0).optional(),
 });
 
 const supplierLinkSchema = z.object({
@@ -31,6 +35,13 @@ export const productCreateSchema = z.object({
   // ✅ Boissons (optionnels)
   brand: z.string().min(1).max(120).optional(),
 
+  // ✅ Logistique / e-commerce (standardisés)
+  weightGr: z.number().int().min(0).optional(),
+  volumeMl: z.number().int().min(0).optional(),
+
+  // ✅ Photo produit (optionnelle) — URL (CDN / Cloudinary)
+  imageUrl: z.string().trim().url().max(2048).optional(),
+
   // ✅ Catégorie
   categoryId: z.string().min(1).optional(),
 
@@ -42,7 +53,13 @@ export const productCreateSchema = z.object({
 });
 
 // Pro: on évite de modifier le SKU après création (risque chaos stock/facturation/intégrations)
-export const productUpdateSchema = productCreateSchema.omit({ sku: true }).partial();
+export const productUpdateSchema = productCreateSchema
+  .omit({ sku: true })
+  .partial()
+  .extend({
+    // ✅ En update, null = suppression explicite de la photo
+    imageUrl: z.string().trim().url().max(2048).nullable().optional(),
+  });
 
 export type ProductCreateInput = z.infer<typeof productCreateSchema>;
 export type ProductUpdateInput = z.infer<typeof productUpdateSchema>;

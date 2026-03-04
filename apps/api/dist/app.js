@@ -30,6 +30,7 @@ const fne_routes_1 = require("./modules/fne/fne.routes");
 const dashboard_routes_1 = require("./modules/dashboard/dashboard.routes");
 const stores_routes_1 = require("./modules/stores/stores.routes");
 const pricelists_routes_1 = require("./modules/pricelists/pricelists.routes");
+const uploads_routes_1 = require("./modules/uploads/uploads.routes");
 const errors_1 = require("./lib/errors");
 function createApp() {
     const app = (0, express_1.default)();
@@ -85,6 +86,7 @@ function createApp() {
     app.use("/stop-payments", stop_payments_routes_1.stopPaymentsRouter);
     app.use("/fne", fne_routes_1.fneRouter);
     app.use("/dashboard", dashboard_routes_1.dashboardRouter);
+    app.use("/uploads", uploads_routes_1.uploadsRouter);
     app.use(errors_1.notFound);
     app.use(errors_1.errorHandler);
     return app;
